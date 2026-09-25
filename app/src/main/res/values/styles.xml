@@ -1,0 +1,33 @@
+<resources>
+
+    <style name="Theme.AstraNav" parent="android:style/Theme.Material.NoActionBar">
+        <!-- Replaced "sans" with "sans-serif" to prevent Layoutlib from trying to load a non-existent asset stream for "sans" font during rendering -->
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:colorAccent">@color/cyan</item>
+        <item name="android:navigationBarColor">@color/ink_900</item>
+        <item name="android:statusBarColor">@color/ink_900</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowActionModeOverlay">true</item>
+    </style>
+
+    <!-- Base Text style so child styles like Text.Title derive properly -->
+    <style name="Text" />
+
+    <style name="Text.Title">
+        <item name="android:textColor">@color/fg</item>
+        <item name="android:textSize">24sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="Text.Label">
+        <item name="android:textColor">@color/fg_faint</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:letterSpacing">.10</item>
+        <item name="android:textAllCaps">true</item>
+    </style>
+
+    <style name="Text.Body">
+        <item name="android:textColor">@color/fg_dim</item>
+        <item name="android:textSize">13sp</item>
+    </style>
+</resources>

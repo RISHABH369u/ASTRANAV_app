@@ -1,0 +1,49 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/main"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="20dp">
+
+    <TextView
+        android:text="Change Password"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:layout_height="wrap_content"
+        android:layout_width="180dp"
+        android:textColor="@color/text_primary"
+        />
+
+    <EditText
+        android:id="@+id/et_old_pass"
+        android:hint="Current Password"
+        android:inputType="textPassword"
+        android:layout_height="wrap_content"
+        android:layout_width="180dp"
+        android:textColor="@color/text_primary"
+        />
+
+    <EditText
+        android:id="@+id/et_new_pass"
+        android:hint="New Password"
+        android:layout_height="wrap_content"
+        android:layout_width="180dp"
+        android:textColor="@color/text_primary"
+        android:inputType="textPassword"/>
+
+    <EditText
+        android:id="@+id/et_confirm_pass"
+        android:hint="Confirm Password"
+        android:layout_height="wrap_content"
+        android:layout_width="180dp"
+        android:textColor="@color/text_primary"
+        android:inputType="textPassword"/>
+
+    <Button
+        android:id="@+id/btn_change"
+        android:layout_marginTop="20dp"
+        android:layout_height="wrap_content"
+        android:layout_width="180dp"
+        android:textColor="@color/text_primary"
+        android:text="Change Password"/>
+</LinearLayout>

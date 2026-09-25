@@ -1,0 +1,55 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="76dp"
+    android:background="@color/surface"
+    android:gravity="center"
+    android:orientation="horizontal"
+    android:paddingHorizontal="8dp"
+    android:weightSum="5">
+
+    <TextView
+        android:id="@+id/nav_navigate"
+        style="@style/Text.Label"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:text="◢\nNAVIGATE"
+        android:textColor="@color/cyan" />
+
+    <TextView
+        android:id="@+id/nav_trips"
+        style="@style/Text.Label"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:text="▣\nTRIPS" />
+
+    <TextView
+        android:id="@+id/nav_sensors"
+        style="@style/Text.Label"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:text="⌁\nSENSORS" />
+
+    <TextView
+        android:id="@+id/nav_maps"
+        style="@style/Text.Label"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:text="◇\nMAPS" />
+
+    <TextView
+        android:id="@+id/nav_settings"
+        style="@style/Text.Label"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:text="⚙\nSETTINGS" />
+</LinearLayout>
