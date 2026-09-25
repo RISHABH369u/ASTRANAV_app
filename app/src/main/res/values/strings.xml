@@ -1,4 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">AstraNav</string>
-    <string name="content_description">ASTRA NAV</string>
+    <string name="app_name">ASTRA NAV</string><string name="alignment_title">Device–Vehicle Alignment</string>
+    <string name="alignment_subtitle">Align your phone with the vehicle’s forward direction</string>
+    <string name="alignment_instruction">Place your phone in the vehicle holder and rotate it so the phone’s forward axis matches the vehicle’s.</string>
+    <string name="why_alignment">Why is this needed?</string><string name="three_d_view">3D View</string><string name="top_view">Top View</string>
+    <string name="rotate">Rotate</string><string name="nudge">Nudge (Fine)</string><string name="reset_view">Reset View</string>
+    <string name="continue_label">Continue</string><string name="adjust_phone">Adjust the phone to align…</string>
+    <string name="drag_phone">Drag the phone to rotate</string><string name="phone_aligned">Phone aligned</string>
+    <string name="screen_placeholder">This deterministic screen is supplied by the ASTRA NAV simulation.</string>
 </resources>

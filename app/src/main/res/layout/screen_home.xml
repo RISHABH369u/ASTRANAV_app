@@ -1,116 +1,65 @@
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/ink_900"
-    android:orientation="vertical">
+    android:background="@color/ink_900">
 
-    <ScrollView
+    <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:fillViewport="true">
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:letterSpacing="0.28"
+            android:text="ASTRA NAV"
+            android:textColor="@color/fg_faint"
+            android:textSize="11sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Navigation System"
+            android:textColor="@color/fg"
+            android:textSize="24sp"
+            android:textStyle="bold" />
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="20dp">
+            android:layout_height="150dp"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/bg_surface"
+            android:gravity="center"
+            android:orientation="vertical">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:letterSpacing=".22"
-                android:text="ASTRA NAV"
-                android:textColor="@color/fg_faint"
-                android:textSize="11sp"
+                android:text="READY"
+                android:textColor="@color/good"
+                android:textSize="14sp"
                 android:textStyle="bold" />
 
             <TextView
-                style="@style/Text.Title"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="18dp"
-                android:text="Ready to navigate" />
-
-            <TextView
-                style="@style/Text.Body"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="5dp"
-                android:text="Vehicle-aligned navigation is active." />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="22dp"
-                android:background="@drawable/bg_surface"
-                android:orientation="vertical"
-                android:padding="18dp">
-
-                <TextView
-                    style="@style/Text.Label"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="SYSTEM STATUS" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="●  ALL SYSTEMS READY"
-                    android:textColor="@color/good"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    style="@style/Text.Body"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="GNSS, IMU and vehicle alignment verified" />
-            </LinearLayout>
-
-            <Button
-                android:id="@+id/action_start_nav"
-                android:layout_width="match_parent"
-                android:layout_height="56dp"
-                android:layout_marginTop="16dp"
-                android:background="@drawable/bg_primary"
-                android:text="START NAVIGATION"
-                android:textColor="#04211F"
-                android:textStyle="bold" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:id="@+id/action_sensors"
-                    android:layout_width="0dp"
-                    android:layout_height="78dp"
-                    android:layout_marginEnd="8dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/bg_surface_2"
-                    android:gravity="center"
-                    android:text="⌁\nSENSOR HEALTH"
-                    android:textColor="@color/fg"
-                    android:textSize="12sp" />
-
-                <TextView
-                    android:id="@+id/action_trips"
-                    android:layout_width="0dp"
-                    android:layout_height="78dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/bg_surface_2"
-                    android:gravity="center"
-                    android:text="▣\nTRIP HISTORY"
-                    android:textColor="@color/fg"
-                    android:textSize="12sp" />
-            </LinearLayout>
+                android:layout_marginTop="8dp"
+                android:text="Hybrid inertial navigation online"
+                android:textColor="@color/fg_dim"
+                android:textSize="13sp" />
         </LinearLayout>
-    </ScrollView>
 
-    <include layout="@layout/view_bottom_nav" />
-</LinearLayout>
+        <Button
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/bg_primary"
+            android:text="Start Navigation"
+            android:textAllCaps="false"
+            android:textColor="#04211F"
+            android:textStyle="bold" />
+    </LinearLayout>
+</ScrollView>

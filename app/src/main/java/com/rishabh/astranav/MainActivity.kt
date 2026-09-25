@@ -117,3 +117,54 @@ class MainActivity : AppCompatActivity() {
         handler.removeCallbacksAndMessages(null)
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+//------------------------------------------ FIGMA XML code ------------------------------
+
+//
+//package com.astranav
+//
+//import android.app.Activity
+//import android.os.Bundle
+//import android.os.Handler
+//import android.os.Looper
+//import android.view.ViewGroup
+//import android.widget.Button
+//import android.widget.SeekBar
+//import com.astranav.ui.CalibrationSceneView
+//
+///** Deterministic navigation state machine: no sensor, location, or permission APIs are used. */
+//class MainActivity : Activity() {
+//    override fun onCreate(state: Bundle?) {
+//        super.onCreate(state)
+//        setContentView(com.astranav.R.layout.activity_main)
+//        Handler(Looper.getMainLooper()).postDelayed({ showSensorCheck() }, 700)
+//    }
+//
+//    private fun showSensorCheck() {
+//        val root = findViewById<ViewGroup>(com.astranav.R.id.astra_root)
+//        root.removeAllViews(); layoutInflater.inflate(com.astranav.R.layout.screen_sensor_check, root, true)
+//        root.findViewById<Button>(com.astranav.R.id.sensor_continue).setOnClickListener { showAlignment() }
+//    }
+//
+//    private fun showAlignment() {
+//        val root = findViewById<ViewGroup>(com.astranav.R.id.astra_root)
+//        root.removeAllViews(); layoutInflater.inflate(com.astranav.R.layout.screen_alignment, root, true)
+//        val scene = root.findViewById<CalibrationSceneView>(com.astranav.R.id.calibration_scene)
+//        fun bind(id: Int, axis: Int) = root.findViewById<SeekBar>(id).setOnSeekBarChangeListener(object: SeekBar.OnSeekBarChangeListener {
+//            override fun onProgressChanged(s: SeekBar, p: Int, user: Boolean) { scene.setAxis(axis, p - 45f) }
+//            override fun onStartTrackingTouch(s: SeekBar) = Unit; override fun onStopTrackingTouch(s: SeekBar) = Unit
+//        })
+//        bind(com.astranav.R.id.yaw, 0); bind(com.astranav.R.id.pitch, 1); bind(com.astranav.R.id.roll, 2)
+//        root.findViewById<Button>(com.astranav.R.id.reset).setOnClickListener { scene.reset(); listOf(com.astranav.R.id.yaw, com.astranav.R.id.pitch, com.astranav.R.id.roll).forEach { root.findViewById<SeekBar>(it).progress = 45 } }
+//    }
+//}

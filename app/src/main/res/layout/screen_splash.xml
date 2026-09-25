@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -5,47 +6,33 @@
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center"
+        android:layout_height="match_parent"
         android:gravity="center"
         android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/splash_mark"
-            android:layout_width="64dp"
-            android:layout_height="64dp"
-            android:background="@drawable/bg_primary"
-            android:gravity="center"
-            android:text="◢"
-            android:textColor="#04211F"
-            android:textSize="32sp" />
+        <ImageView
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:contentDescription="ASTRA NAV"
+            android:src="@drawable/ic_navigate" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
+            android:layout_marginTop="16dp"
+            android:letterSpacing="0.14"
             android:text="ASTRA NAV"
             android:textColor="@color/fg"
-            android:textSize="25sp"
+            android:textSize="23sp"
             android:textStyle="bold" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
-            android:letterSpacing=".16"
-            android:text="NAVIGATION THAT KEEPS GOING"
-            android:textColor="@color/cyan"
+            android:letterSpacing="0.12"
+            android:text="RESILIENT EDGE NAVIGATION"
+            android:textColor="@color/fg_faint"
             android:textSize="10sp" />
     </LinearLayout>
-
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom|center_horizontal"
-        android:layout_marginBottom="34dp"
-        android:letterSpacing=".12"
-        android:text="INITIALIZING SYSTEMS"
-        android:textColor="@color/fg_faint"
-        android:textSize="10sp" />
 </FrameLayout>
