@@ -5,14 +5,16 @@ class SensorAdapter {
 
     fun validate(sample: ImuSample): Boolean {
         if (sample.timestampNanos <= lastTimestampNanos) return false
-        lastTimestampNanos = sample.timestampNanos
         return sample.accelX.isFinite() && sample.accelY.isFinite() && sample.accelZ.isFinite() &&
             sample.gyroX.isFinite() && sample.gyroY.isFinite() && sample.gyroZ.isFinite()
     }
 
     fun dtSeconds(sample: ImuSample): Double? {
         if (!validate(sample)) return null
-        val dt = (sample.timestampNanos - lastTimestampNanos).toDouble() * 1e-9
-        return dt.coerceIn(0.001, 0.2)
+        val previous = lastTimestampNanos
+        lastTimestampNanos = sample.timestampNanos
+        if (previous == Long.MIN_VALUE) return null
+        val dt = (sample.timestampNanos - previous).toDouble() * 1e-9
+        return if (dt.isFinite() && dt in 0.001..0.2) dt else null
     }
 }
