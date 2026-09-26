@@ -1,8 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
 
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="oval">
+    <!-- Soft halo -->
+    <item
+        android:width="20dp"
+        android:height="20dp"
+        android:gravity="center">
+        <shape android:shape="oval">
+            <gradient
+                android:type="radial"
+                android:gradientRadius="10dp"
+                android:startColor="#996C8CFF"
+                android:endColor="#006C8CFF" />
+        </shape>
+    </item>
 
-    <solid android:color="@color/astra_cyan" />
+    <!-- Solid core -->
+    <item
+        android:width="6dp"
+        android:height="6dp"
+        android:gravity="center">
+        <shape android:shape="oval">
+            <solid android:color="#FFE8F0FF" />
+        </shape>
+    </item>
 
-</shape>
+</layer-list>

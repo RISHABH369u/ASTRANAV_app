@@ -42,7 +42,8 @@
     <color name="astra_background_deep">#050709</color>
     <color name="astra_warning">#F5B551</color>
 
-
+    <color name="astra_text_tertiary">#7A8CA6FF</color>
+    <color name="astra_accent">#6C8CFFFF</color>
 
 
 

@@ -1,12 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
 
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="rectangle">
+    <!-- Base diagonal gradient: deep space navy to near-black -->
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:type="linear"
+                android:angle="115"
+                android:startColor="#0F1B2E"
+                android:centerColor="#0A1220"
+                android:endColor="#05070C" />
+        </shape>
+    </item>
 
-    <gradient
-        android:angle="270"
-        android:startColor="#02050B"
-        android:centerColor="#071321"
-        android:endColor="#03060C" />
+    <!-- Vignette to pull focus toward center -->
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:type="radial"
+                android:gradientRadius="700dp"
+                android:startColor="#00000000"
+                android:endColor="#66000000" />
+        </shape>
+    </item>
 
-</shape>
+</layer-list>
