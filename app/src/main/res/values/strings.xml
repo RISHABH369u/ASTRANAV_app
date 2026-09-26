@@ -15,4 +15,5 @@
     <string name="drag_phone">Drag the phone to rotate</string>
     <string name="phone_aligned">Phone aligned</string>
     <string name="screen_placeholder">This deterministic screen is supplied by the ASTRA NAV simulation.</string>
+
 </resources>

@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Inflated by PhoneScanView.kt into itself (merge root — no top-level ViewGroup needed). -->
+<merge xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <!-- HUD crosshair grid + radial glow (mirrors the <svg> backdrop) -->
+    <com.rishabh.astranav.sensorcheck.ui.view.HudGridView
+        android:id="@+id/hudGrid"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- Two concentric scan pulses, staggered — mirrors `.animate-ring` x2 -->
+    <com.rishabh.astranav.sensorcheck.ui.view.ScanRingView
+        android:id="@+id/scanRing1"
+        android:layout_width="96dp"
+        android:layout_height="96dp"
+        android:layout_gravity="center" />
+
+    <com.rishabh.astranav.sensorcheck.ui.view.ScanRingView
+        android:id="@+id/scanRing2"
+        android:layout_width="96dp"
+        android:layout_height="96dp"
+        android:layout_gravity="center" />
+
+    <!-- Phone mockup, tilted in PhoneScanView.kt to mirror the CSS 3D perspective -->
+    <LinearLayout
+        android:id="@+id/phoneBody"
+        android:layout_width="62dp"
+        android:layout_height="108dp"
+        android:layout_gravity="center"
+        android:background="@drawable/bg_phone_body"
+        android:gravity="center"
+        android:orientation="vertical">
+
+        <View
+            android:layout_width="16dp"
+            android:layout_height="3dp"
+            android:layout_marginBottom="6dp"
+            android:background="@drawable/bg_speaker_slit" />
+
+        <FrameLayout
+            android:layout_width="48dp"
+            android:layout_height="92dp"
+            android:layout_marginTop="2dp"
+            android:background="@drawable/bg_phone_screen">
+
+            <ImageView
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:layout_gravity="center"
+                android:src="@drawable/ic_navigate"
+                app:tint="@color/cyan" />
+        </FrameLayout>
+    </LinearLayout>
+</merge>

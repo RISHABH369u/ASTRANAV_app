@@ -84,21 +84,39 @@ class SplashScreen : AppCompatActivity() {
         }
 
         /* Hand off — mirrors the React setTimeout(onDone, 1100). */
-        handler.postDelayed({ openMainActivity() }, 2100)
+        handler.postDelayed({ openSensorCheckActivity() }, 2100)
     }
 
-    private fun openMainActivity() {
+    private fun openSensorCheckActivity() {
+
         val root = findViewById<View>(R.id.main)
 
-        ObjectAnimator.ofFloat(root, View.ALPHA, 1f, 0f).apply {
+        ObjectAnimator.ofFloat(
+            root,
+            View.ALPHA,
+            1f,
+            0f
+        ).apply {
+
             duration = 220
+
             addListener(object : AnimatorListenerAdapter() {
+
                 override fun onAnimationEnd(animation: Animator) {
-                    startActivity(Intent(this@SplashScreen, MainActivity::class.java))
+
+                    val intent = Intent(
+                        this@SplashScreen,
+                        SensorCheckActivity::class.java
+                    )
+
+                    startActivity(intent)
+
                     applyExitTransition()
+
                     finish()
                 }
             })
+
             start()
         }
     }

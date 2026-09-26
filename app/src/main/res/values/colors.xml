@@ -53,5 +53,26 @@
 
 
 
+    <color name="warn">#F5B942</color>
+    <color name="crit">#FF5C6C</color>
+    <color name="idle">#4A5670</color>
+    <!-- Health-tinted borders/backgrounds, alpha baked into the hex (ARGB) -->
+    <color name="crit_border_35">#59FF5C6C</color>
+    <color name="crit_bg_06">#0FFF5C6C</color>
+    <color name="crit_bg_08">#14FF5C6C</color>
+    <color name="warn_border_35">#59F5B942</color>
+    <color name="warn_bg_05">#0DF5B942</color>
+    <color name="warn_bg_08">#14F5B942</color>
+    <color name="button_primary_text">#04211F</color>
+
+
+
+
+
+
+
+
+
+
 
 </resources>

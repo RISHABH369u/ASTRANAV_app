@@ -1,4 +1,4 @@
-package com.rishabh.astranav
+package com.rishabh.astranav.sensorcheck.ui
 
 import android.Manifest
 import android.content.pm.PackageManager
