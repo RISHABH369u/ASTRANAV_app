@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="AstraText" parent="android:style/TextAppearance.Material.NoActionBar">
+    <style name="AstraText" parent="android:style/TextAppearance.Material">
         <item name="android:fontFamily">sans</item>
         <item name="android:textColor">@color/fg</item>
     </style>
@@ -12,6 +12,23 @@
         <item name="android:textSize">11sp</item>
         <item name="android:letterSpacing">0.1</item>
         <item name="android:textAllCaps">true</item>
+    </style>
+
+    <style name="Text" parent="AstraText" />
+
+    <style name="Text.Label" parent="AstraLabel" />
+
+    <style name="Text.Title">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:textSize">22sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textColor">@color/fg</item>
+    </style>
+
+    <style name="Text.Body">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:textColor">@color/fg_dim</item>
     </style>
 
     <style name="Theme.AstraNav" parent="android:style/Theme.Material.NoActionBar">

@@ -5,6 +5,8 @@ import android.opengl.GLES20
 import android.opengl.GLSurfaceView
 import android.opengl.Matrix
 import android.view.MotionEvent
+import javax.microedition.khronos.egl.EGLConfig
+import javax.microedition.khronos.opengles.GL10
 import kotlin.math.max
 
 /** Real OpenGL ES geometry used by the XML alignment scene; phone axes rotate with the phone, car and grid do not. */
@@ -49,8 +51,8 @@ class CalibrationSceneView(context: Context) : GLSurfaceView(context) {
         private val model = FloatArray(16);
         private lateinit var solid: Solid
         override fun onSurfaceCreated(
-            c: javax.microedition.khronos.egl.EGLConfig?,
-            d: javax.microedition.khronos.opengles.GL10?
+            gl: GL10?,
+            config: EGLConfig?
         ) {
             GLES20.glEnable(GLES20.GL_DEPTH_TEST); GLES20.glClearColor(
                 .027f,

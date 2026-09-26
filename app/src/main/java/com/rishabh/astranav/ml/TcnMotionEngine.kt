@@ -1,7 +1,7 @@
 package com.rishabh.astranav.ml
 
 import android.content.Context
-import com.microsoft.onnxruntime.*
+import ai.onnxruntime.*
 import com.rishabh.astranav.sensor.ImuSample
 import java.nio.FloatBuffer
 

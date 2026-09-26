@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+
+    <gradient
+        android:angle="90"
+        android:startColor="@color/astra_background"
+        android:centerColor="@color/astra_background"
+        android:endColor="@color/astra_background_deep"
+        android:type="linear" />
+
+</shape>

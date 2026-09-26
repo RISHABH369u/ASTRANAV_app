@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="460dp"
+    android:height="405dp"
+    android:viewportWidth="460"
+    android:viewportHeight="405">
+
+    <!-- Main A + navigation arrow -->
+    <path
+        android:pathData="M458,56
+            L446,60
+            L439,64
+            L415,73
+            L391,84
+            L379,88
+            L367,94
+            L355,98
+            L343,104
+            L257,139
+            L257,141
+            L266,141
+            L267,142
+            L332,145
+            L333,146
+            L339,146
+            L340,149
+            L93,357
+            L86,361
+            L80,361
+            L79,362
+            L70,361
+            L69,357
+            L71,352
+            L73,350
+            L228,43
+            L232,44
+            L261,102
+            L268,101
+            L298,88
+            L298,86
+            L256,2
+            L203,2
+            L39,329
+            L37,331
+            L30,345
+            L30,347
+            L28,349
+            L27,353
+            L24,357
+            L24,359
+            L22,361
+            L2,401
+            L2,403
+            L81,403
+            L82,402
+            L91,402
+            L99,400
+            L110,395
+            L120,388
+            L379,170
+            L382,171
+            L410,228
+            L413,228
+            L425,180
+            L429,169
+            L435,143
+            L447,102
+            L449,91
+            L454,76
+            Z"
+
+        android:fillColor="#55E0F7" />
+
+    <!-- Lower-right structural element -->
+    <path
+        android:pathData="M255,314
+            L255,317
+            L291,348
+            L343,391
+            L357,399
+            L368,402
+            L377,402
+            L378,403
+            L453,403
+            L456,402
+            L456,399
+            L415,317
+            L413,315
+            L413,313
+            L411,311
+            L411,309
+            L409,307
+            L409,305
+            L407,303
+            L407,301
+            L401,291
+            L369,227
+            L368,223
+            L366,221
+            L362,222
+            L342,240
+            L336,244
+            L335,249
+            L390,356
+            L389,361
+            L373,361
+            L367,358
+            L287,290
+            L283,290
+            Z"
+
+        android:fillColor="#159CF7" />
+
+</vector>

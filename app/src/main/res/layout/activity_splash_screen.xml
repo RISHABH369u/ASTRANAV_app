@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/main"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/splash_background"
+    android:clipChildren="false">
+
+    <!-- Very subtle center glow -->
+    <View
+        android:id="@+id/centerGlow"
+        android:layout_width="330dp"
+        android:layout_height="330dp"
+        android:layout_gravity="center"
+        android:background="@drawable/splash_glow"
+        android:alpha="0.25" />
+
+    <!-- Outer navigation ring -->
+    <View
+        android:id="@+id/ringOuter"
+        android:layout_width="310dp"
+        android:layout_height="310dp"
+        android:layout_gravity="center"
+        android:background="@drawable/ring_outer"
+        android:alpha="0.30" />
+
+    <!-- Inner navigation ring -->
+    <View
+        android:id="@+id/ringInner"
+        android:layout_width="255dp"
+        android:layout_height="255dp"
+        android:layout_gravity="center"
+        android:background="@drawable/ring_inner"
+        android:alpha="0.20" />
+
+    <!-- Small navigation point -->
+    <View
+        android:id="@+id/navigationPoint"
+        android:layout_width="7dp"
+        android:layout_height="7dp"
+        android:layout_gravity="center"
+        android:background="@drawable/navigation_point"
+        android:alpha="0" />
+
+    <!-- Main content -->
+    <LinearLayout
+        android:id="@+id/content"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:paddingStart="28dp"
+        android:paddingEnd="28dp">
+
+        <!-- Your ASTRANAV logo -->
+        <ImageView
+            android:id="@+id/logo"
+            android:layout_width="190dp"
+            android:layout_height="190dp"
+            android:adjustViewBounds="true"
+            android:contentDescription="ASTRANAV"
+            android:scaleType="fitCenter"
+            android:src="@drawable/astranav_logo"
+            android:alpha="0" />
+
+        <!-- Brand name -->
+        <TextView
+            android:id="@+id/appName"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="22dp"
+            android:fontFamily="sans"
+            android:letterSpacing="0.22"
+            android:text="ASTRANAV"
+            android:textColor="@color/astra_text_primary"
+            android:textSize="29sp"
+            android:textStyle="normal"
+            android:alpha="0" />
+
+    </LinearLayout>
+
+    <!-- Loading section -->
+    <LinearLayout
+        android:id="@+id/loadingContainer"
+        android:layout_width="260dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="72dp"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:alpha="0">
+
+        <TextView
+            android:id="@+id/loadingText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:letterSpacing="0.22"
+            android:text="LOADING..."
+            android:textColor="@color/astra_text_secondary"
+            android:textSize="9sp" />
+
+        <ProgressBar
+            android:id="@+id/loadingBar"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="260dp"
+            android:layout_height="3dp"
+            android:layout_marginTop="13dp"
+            android:max="100"
+            android:progress="0"
+            android:progressDrawable="@drawable/splash_progress" />
+
+    </LinearLayout>
+
+</FrameLayout>

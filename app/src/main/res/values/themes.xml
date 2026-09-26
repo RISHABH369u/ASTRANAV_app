@@ -1,3 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+
+    <style name="Theme.ASTRANAV.Splash" parent="Theme.Material3.DayNight.NoActionBar">
+
+        <item name="android:fontFamily">sans</item>
+
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:statusBarColor">@color/astra_background</item>
+
+        <item name="android:navigationBarColor">@color/astra_background</item>
+
+        <item name="android:windowActionModeOverlay">true</item>
+
+        <item name="android:colorAccent">@color/astra_cyan</item>
+
+        <item name="android:windowBackground">@color/astra_background</item>
+
+    </style>
+
 </resources>

@@ -1,10 +1,50 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ink_900">#070A10</color><color name="ink_850">#0A0E14</color><color name="ink_800">#0E131C</color>
-    <color name="surface">#121826</color><color name="surface_2">#171F30</color><color name="surface_3">#1E2739</color>
-    <color name="hairline">#232D40</color><color name="hairline_soft">#1A2130</color>
-    <color name="fg">#E7ECF4</color><color name="fg_dim">#9AA6B8</color><color name="fg_faint">#64708A</color>
-    <color name="cyan">#35E0D0</color><color name="cyan_dim">#14B8A8</color><color name="blue">#4F9DFF</color>
-    <color name="good">#34D68A</color><color name="warn">#F5B942</color><color name="crit">#FF5C6C</color>
+    <color name="ink_900">#070A10</color>
+    <color name="ink_850">#0A0E14</color>
+    <color name="ink_800">#0E131C</color>
+    <color name="surface">#121826</color>
+    <color name="surface_2">#171F30</color>
+    <color name="surface_3">#1E2739</color>
+    <color name="hairline">#232D40</color>
+    <color name="hairline_soft">#1A2130</color>
+    <color name="fg">#E7ECF4</color>
+    <color name="fg_dim">#9AA6B8</color>
+    <color name="fg_faint">#64708A</color>
+    <color name="cyan_dim">#14B8A8</color>
+    <color name="blue">#4F9DFF</color>
+    <color name="good">#34D68A</color>
+    <color name="CardSurface">#1A212B</color>
+    <color name="ASTRACYAN">#5CE1E6</color>
     <color name="transparent">#00000000</color>
+    <color name="Blue">#5B8CFF</color>
+    <color name="Success">#55D6A4</color>
+    <color name="Warning">#F4C95D</color>
+    <color name="Error">#FF6B6B</color>
+
+
+
+        <color name="astra_background">#080B10</color>
+
+        <color name="astra_surface">#0E131A</color>
+        <color name="astra_surface_elevated">#151B23</color>
+
+        <color name="astra_cyan">#5CE1E6</color>
+        <color name="cyan">#5CE1E6</color>
+        <color name="astra_cyan_soft">#2F8F96</color>
+
+        <color name="astra_blue">#5B8CFF</color>
+
+        <color name="astra_text_primary">#F5F7FA</color>
+        <color name="astra_text_secondary">#9AA4B2</color>
+        <color name="astra_text_muted">#667181</color>
+
+    <color name="astra_background_deep">#050709</color>
+    <color name="astra_warning">#F5B551</color>
+
+
+
+
+
+
 </resources>
