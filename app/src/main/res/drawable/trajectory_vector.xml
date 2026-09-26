@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="360dp"
+    android:height="540dp"
+    android:viewportWidth="360"
+    android:viewportHeight="540">
+
+    <path
+        android:name="trajectoryPath"
+        android:pathData="M -20,460 C 80,420 120,320 180,300 C 260,272 280,160 380,120"
+        android:strokeColor="@color/cyan"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:trimPathStart="0"
+        android:trimPathEnd="0"
+        android:trimPathOffset="0" />
+
+</vector>

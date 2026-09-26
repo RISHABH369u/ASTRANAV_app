@@ -45,6 +45,12 @@
     <color name="astra_text_tertiary">#7A8CA6FF</color>
     <color name="astra_accent">#6C8CFFFF</color>
 
+    <color name="color_ink_900">#070A10</color>
+    <color name="color_surface_3">#1E2739</color>
+    <color name="color_cyan">#35E0D0</color>
+    <color name="color_fg">#E7ECF4</color>
+    <color name="color_fg_faint">#64708A</color>
+
 
 
 

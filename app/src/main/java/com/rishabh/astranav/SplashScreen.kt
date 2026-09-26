@@ -4,43 +4,33 @@ import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
-import android.animation.ValueAnimator
-import android.content.Intent
+import android.graphics.drawable.Animatable
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.View
-import android.view.animation.AccelerateDecelerateInterpolator
-import android.view.animation.DecelerateInterpolator
-import android.view.animation.LinearInterpolator
 import android.view.animation.PathInterpolator
-import android.widget.ProgressBar
-import android.widget.TextView
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import android.content.Intent
+import android.widget.ImageView
 
 /**
- * Cinematic splash for ASTRANAV.
- *
- * Choreography is layered rather than simultaneous: ambient light first,
- * then the instrument (rings + sweep), then the mark, then the identity
- * (name / underline / tagline), then the loading readout. Two looping
- * animators (outer ring drift, radar sweep) keep the screen alive for
- * however long the real init work behind it takes.
+ * Splash screen matching the web app's ink-900 / cyan design system:
+ * an ambient trajectory line draws itself in behind a centered wordmark,
+ * while a pill-shaped bar wipes in at the bottom. Navigates on to
+ * MainActivity after the same ~1.1s the React version waits, independent
+ * of whether the decorative animations have finished.
  */
 class SplashScreen : AppCompatActivity() {
 
     private val handler = Handler(Looper.getMainLooper())
-    private val loopingAnimators = mutableListOf<Animator>()
 
-    // Premium "ease-out expo"-style curve: fast start, long soft settle.
-    private val easeOutExpo = PathInterpolator(0.16f, 1f, 0.3f, 1f)
-
-    // Gentle overshoot for the logo's single confident "pop".
-    private val easeOutBack = PathInterpolator(0.34f, 1.56f, 0.64f, 1f)
+    // Matches the CSS cubic-bezier(0.22, 1, 0.36, 1) used for fade-up / fade-in.
+    private val easeOutSoft = PathInterpolator(0.22f, 1f, 0.36f, 1f)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -59,264 +49,52 @@ class SplashScreen : AppCompatActivity() {
 
     private fun startSplash() {
 
-        val centerGlowOuter = findViewById<View>(R.id.centerGlowOuter)
-        val centerGlow = findViewById<View>(R.id.centerGlow)
-        val radarSweep = findViewById<View>(R.id.radarSweep)
-        val ringOuter = findViewById<View>(R.id.ringOuter)
-        val ringInner = findViewById<View>(R.id.ringInner)
-        val orbitPivot = findViewById<View>(R.id.orbitPivot)
-        val navigationPoint = findViewById<View>(R.id.navigationPoint)
+        val trajectoryBackdrop = findViewById<ImageView>(R.id.trajectoryBackdrop)
+        val wordmark = findViewById<View>(R.id.wordmark)
+        val bottomSection = findViewById<View>(R.id.bottomSection)
+        val loadingFill = findViewById<View>(R.id.loadingFill)
 
-        val logo = findViewById<View>(R.id.logo)
-        val appName = findViewById<TextView>(R.id.appName)
-        val nameUnderline = findViewById<View>(R.id.nameUnderline)
-        val tagline = findViewById<TextView>(R.id.tagline)
+        /* Trajectory line draws itself in — direct equivalent of the
+           stroke-dashoffset keyframe on the SVG path. */
+        (trajectoryBackdrop.drawable as? Animatable)?.start()
 
-        val loadingContainer = findViewById<View>(R.id.loadingContainer)
-        val loadingBar = findViewById<ProgressBar>(R.id.loadingBar)
-
-        /* ---------------------------------------------------------
-         * Initial state — everything invisible / at rest.
-         * --------------------------------------------------------- */
-
-        centerGlowOuter.alpha = 0f
-        centerGlow.alpha = 0f
-        radarSweep.alpha = 0f
-
-        ringOuter.alpha = 0f
-        ringOuter.scaleX = 0.88f
-        ringOuter.scaleY = 0.88f
-
-        ringInner.alpha = 0f
-        ringInner.scaleX = 0.88f
-        ringInner.scaleY = 0.88f
-
-        navigationPoint.alpha = 0f
-        navigationPoint.scaleX = 0.2f
-        navigationPoint.scaleY = 0.2f
-
-        logo.alpha = 0f
-        logo.scaleX = 0.74f
-        logo.scaleY = 0.74f
-
-        appName.alpha = 0f
-        appName.translationY = 14f
-
-        nameUnderline.alpha = 0f
-
-        tagline.alpha = 0f
-        tagline.translationY = 6f
-
-        loadingContainer.alpha = 0f
-
-        /* ---------------------------------------------------------
-         * 1. Ambient light — the screen "warms up" before anything
-         *    else appears.
-         * --------------------------------------------------------- */
-
-        val outerGlowFade = ObjectAnimator.ofFloat(centerGlowOuter, View.ALPHA, 0f, 1f).apply {
+        /* Wordmark: fade in, no translation (animate-fade-in ~0.6s ease). */
+        ObjectAnimator.ofFloat(wordmark, View.ALPHA, 0f, 1f).apply {
             duration = 1000
-            interpolator = DecelerateInterpolator()
+            start()
         }
 
-        val coreGlowFade = ObjectAnimator.ofFloat(centerGlow, View.ALPHA, 0f, 1f).apply {
-            duration = 900
-            startDelay = 120
-            interpolator = DecelerateInterpolator()
-        }
-
-        /* ---------------------------------------------------------
-         * 2. The instrument — rings settle inward with the expo ease,
-         *    sweep fades in behind them and starts its fast loop.
-         * --------------------------------------------------------- */
-
-        val outerRingIn = AnimatorSet().apply {
-            playTogether(
-                ObjectAnimator.ofFloat(ringOuter, View.ALPHA, 0f, 1f),
-                ObjectAnimator.ofFloat(ringOuter, View.SCALE_X, 0.88f, 1f),
-                ObjectAnimator.ofFloat(ringOuter, View.SCALE_Y, 0.88f, 1f),
-            )
-            duration = 900
-            startDelay = 150
-            interpolator = easeOutExpo
-        }
-
-        val innerRingIn = AnimatorSet().apply {
-            playTogether(
-                ObjectAnimator.ofFloat(ringInner, View.ALPHA, 0f, 1f),
-                ObjectAnimator.ofFloat(ringInner, View.SCALE_X, 0.88f, 1f),
-                ObjectAnimator.ofFloat(ringInner, View.SCALE_Y, 0.88f, 1f),
-            )
-            duration = 800
-            startDelay = 220
-            interpolator = easeOutExpo
-        }
-
-        val sweepFade = ObjectAnimator.ofFloat(radarSweep, View.ALPHA, 0f, 1f).apply {
-            duration = 500
-            startDelay = 260
-        }
-
-        /* ---------------------------------------------------------
-         * 3. The mark — logo pops in with a single confident overshoot.
-         * --------------------------------------------------------- */
-
-        val logoIn = AnimatorSet().apply {
-            playTogether(
-                ObjectAnimator.ofFloat(logo, View.ALPHA, 0f, 1f).apply { duration = 650 },
-                ObjectAnimator.ofFloat(logo, View.SCALE_X, 0.74f, 1f).apply { duration = 800 },
-                ObjectAnimator.ofFloat(logo, View.SCALE_Y, 0.74f, 1f).apply { duration = 800 },
-            )
-            startDelay = 380
-            interpolator = easeOutBack
-        }
-
-        /* Run the whole visual base as one set. */
+        /* Bottom section: fade up (animate-fade-up ~0.5s, ease-out-soft). */
         AnimatorSet().apply {
-            playTogether(outerGlowFade, coreGlowFade, outerRingIn, innerRingIn, sweepFade, logoIn)
+            playTogether(
+                ObjectAnimator.ofFloat(bottomSection, View.ALPHA, 0f, 1f),
+                ObjectAnimator.ofFloat(bottomSection, View.TRANSLATION_Y, 10f, 0f),
+            )
+            duration = 700
+            interpolator = easeOutSoft
             start()
         }
 
-        /* ---------------------------------------------------------
-         * 4. Navigation point — snaps in with a pulse once the ring
-         *    it lives on is visible, then the ring starts orbiting it.
-         * --------------------------------------------------------- */
-
-        handler.postDelayed({
-            navigationPoint.alpha = 1f
-            AnimatorSet().apply {
-                playTogether(
-                    ObjectAnimator.ofFloat(navigationPoint, View.SCALE_X, 0.2f, 1.3f, 1f),
-                    ObjectAnimator.ofFloat(navigationPoint, View.SCALE_Y, 0.2f, 1.3f, 1f),
-                )
-                duration = 550
-                interpolator = DecelerateInterpolator()
-                start()
-            }
-        }, 650)
-
-        /* ---------------------------------------------------------
-         * 5. Two independent loops start once their host is visible:
-         *    the sweep spins fast (a live scan), the orbit pivot
-         *    drifts slowly (the ring itself feels alive, not static).
-         * --------------------------------------------------------- */
-
-        handler.postDelayed({
-            loop(radarSweep, durationMs = 2600)
-        }, 700)
-
-        handler.postDelayed({
-            loop(orbitPivot, durationMs = 12000)
-        }, 750)
-
-        /* ---------------------------------------------------------
-         * 6. Identity — name, underline, tagline reveal in sequence.
-         * --------------------------------------------------------- */
-
-        handler.postDelayed({
-            AnimatorSet().apply {
-                playTogether(
-                    ObjectAnimator.ofFloat(appName, View.ALPHA, 0f, 1f),
-                    ObjectAnimator.ofFloat(appName, View.TRANSLATION_Y, 14f, 0f),
-                )
-                duration = 600
-                interpolator = easeOutExpo
-                start()
-            }
-        }, 950)
-
-        handler.postDelayed({
-            growUnderline(nameUnderline, targetDp = 44f, durationMs = 480)
-        }, 1150)
-
-        handler.postDelayed({
-            AnimatorSet().apply {
-                playTogether(
-                    ObjectAnimator.ofFloat(tagline, View.ALPHA, 0f, 1f),
-                    ObjectAnimator.ofFloat(tagline, View.TRANSLATION_Y, 6f, 0f),
-                )
-                duration = 450
-                interpolator = DecelerateInterpolator()
-                start()
-            }
-        }, 1350)
-
-        /* ---------------------------------------------------------
-         * 7. Loading readout — the last thing to appear, and the
-         *    thing the eye rests on until launch.
-         * --------------------------------------------------------- */
-
-        handler.postDelayed({
-            ObjectAnimator.ofFloat(loadingContainer, View.ALPHA, 0f, 1f).apply {
-                duration = 400
-                start()
-            }
-            animateProgress(loadingBar)
-        }, 1600)
-
-        /* ---------------------------------------------------------
-         * 8. Hand off to MainActivity.
-         * --------------------------------------------------------- */
-
-        handler.postDelayed({ openMainActivity() }, 2750)
-    }
-
-    /** Starts an indefinite linear rotation on [view] and tracks it for cleanup. */
-    private fun loop(view: View, durationMs: Long) {
-        val animator = ObjectAnimator.ofFloat(view, View.ROTATION, 0f, 360f).apply {
-            duration = durationMs
-            repeatCount = ValueAnimator.INFINITE
-            interpolator = LinearInterpolator()
-        }
-        loopingAnimators += animator
-        animator.start()
-    }
-
-    /** Grows a 1dp placeholder view into a [targetDp]-wide accent rule. */
-    private fun growUnderline(view: View, targetDp: Float, durationMs: Long) {
-        val targetPx = (targetDp * resources.displayMetrics.density).toInt()
-        view.alpha = 1f
-        ValueAnimator.ofInt(view.layoutParams.width.coerceAtLeast(1), targetPx).apply {
-            duration = durationMs
-            interpolator = DecelerateInterpolator()
-            addUpdateListener { animator ->
-                view.layoutParams = view.layoutParams.apply {
-                    width = animator.animatedValue as Int
-                }
-            }
+        /* Loading bar wipes in left-to-right over 2.4s — outlives the
+           handoff below on purpose, same as the web version. */
+        ObjectAnimator.ofFloat(loadingFill, View.SCALE_X, 0f, 1f).apply {
+            duration = 3400
+            interpolator = easeOutSoft
             start()
         }
-    }
 
-    private fun animateProgress(progressBar: ProgressBar) {
-        ValueAnimator.ofInt(0, 100).apply {
-            duration = 1050
-            interpolator = AccelerateDecelerateInterpolator()
-            addUpdateListener { animator ->
-                progressBar.progress = animator.animatedValue as Int
-            }
-            start()
-        }
+        /* Hand off — mirrors the React setTimeout(onDone, 1100). */
+        handler.postDelayed({ openMainActivity() }, 2100)
     }
 
     private fun openMainActivity() {
         val root = findViewById<View>(R.id.main)
 
-        // Stop loops before the fade so they don't tick during the transition.
-        loopingAnimators.forEach { it.cancel() }
-
-        AnimatorSet().apply {
-            playTogether(
-                ObjectAnimator.ofFloat(root, View.ALPHA, 1f, 0f),
-                ObjectAnimator.ofFloat(root, View.SCALE_X, 1f, 1.03f),
-                ObjectAnimator.ofFloat(root, View.SCALE_Y, 1f, 1.03f),
-            )
-            duration = 380
-            interpolator = AccelerateDecelerateInterpolator()
+        ObjectAnimator.ofFloat(root, View.ALPHA, 1f, 0f).apply {
+            duration = 220
             addListener(object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: Animator) {
-                    val intent = Intent(this@SplashScreen, MainActivity::class.java)
-                    startActivity(intent)
+                    startActivity(Intent(this@SplashScreen, MainActivity::class.java))
                     applyExitTransition()
                     finish()
                 }
@@ -339,8 +117,6 @@ class SplashScreen : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        loopingAnimators.forEach { it.cancel() }
-        loopingAnimators.clear()
         handler.removeCallbacksAndMessages(null)
         super.onDestroy()
     }
