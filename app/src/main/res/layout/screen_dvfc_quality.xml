@@ -1,0 +1,289 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/ink_900"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <TextView
+            style="@style/Text.Label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="DVFC · QUALITY ENGINE" />
+
+        <TextView
+            android:id="@+id/dvfc_quality_title"
+            style="@style/Text.Title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="Calibration quality &amp; fine tuning" />
+
+        <TextView
+            style="@style/Text.Body"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="Validate the sensor adapter and every Device → Vehicle Frame calibration stage before handing the transform to navigation." />
+
+        <!-- Overall state -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:background="@drawable/bg_surface"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="18dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    style="@style/Text.Label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="VEHICLE FRAME QUALITY" />
+
+                <TextView
+                    android:id="@+id/dvfc_quality_score"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="94"
+                    android:textColor="@color/fg"
+                    android:textSize="38sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/dvfc_quality_state"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="READY · CALIBRATION CONVERGED"
+                    android:textColor="@color/good"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <ProgressBar
+                android:id="@+id/dvfc_quality_progress"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="130dp"
+                android:layout_height="8dp"
+                android:max="100"
+                android:progress="94"
+                android:progressTint="@color/cyan" />
+        </LinearLayout>
+
+        <!-- Sensor Adapter -->
+        <TextView
+            style="@style/Text.Label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="01 · SENSOR ADAPTER" />
+
+        <LinearLayout
+            android:id="@+id/sensor_adapter_card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_surface"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:id="@+id/adapter_time_sync"
+                style="@style/Text.Body"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="TIME SYNC     ✓ LOCKED     drift 1.8 ms" />
+
+            <TextView
+                android:id="@+id/adapter_units"
+                style="@style/Text.Body"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="9dp"
+                android:text="UNITS         ✓ NORMALIZED  accel · m/s²  gyro · rad/s" />
+
+            <TextView
+                android:id="@+id/adapter_gaps"
+                style="@style/Text.Body"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="9dp"
+                android:text="DATA GAPS     ✓ HEALTHY   max 8 ms · dropped 2" />
+
+            <TextView
+                android:id="@+id/adapter_resampling"
+                style="@style/Text.Body"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="9dp"
+                android:text="RESAMPLING    ✓ STABLE    100 Hz → 100 Hz" />
+
+            <TextView
+                android:id="@+id/adapter_gravity"
+                style="@style/Text.Body"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="9dp"
+                android:text="GRAVITY       ✓ STABLE    9.806 m/s² · 0.04% error" />
+        </LinearLayout>
+
+        <!-- Calibration matrix -->
+        <TextView
+            style="@style/Text.Label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="02 · CALIBRATION QUALITY" />
+
+        <LinearLayout
+            android:id="@+id/calibration_quality_card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_surface"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView android:id="@+id/score_manual" style="@style/Text.Body" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="MANUAL ALIGNMENT        96%   ✓" />
+            <TextView android:id="@+id/score_gravity" style="@style/Text.Body" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="GRAVITY LEVELING        94%   ✓" />
+            <TextView android:id="@+id/score_gyro" style="@style/Text.Body" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="GYRO BIAS ESTIMATION    91%   ✓" />
+            <TextView android:id="@+id/score_azimuth" style="@style/Text.Body" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="MOUNT AZIMUTH           89%   ✓" />
+            <TextView android:id="@+id/score_refinement" style="@style/Text.Body" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="AUTO REFINEMENT          93%   ✓" />
+            <TextView android:id="@+id/score_mount" style="@style/Text.Body" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="MOUNT STABILITY          97%   ✓" />
+        </LinearLayout>
+
+        <!-- GNSS + motion evidence -->
+        <TextView
+            style="@style/Text.Label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="03 · CALIBRATION EVIDENCE" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginEnd="6dp"
+                android:background="@drawable/bg_surface"
+                android:orientation="vertical"
+                android:padding="15dp">
+
+                <TextView style="@style/Text.Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="GNSS QUALITY" />
+                <TextView android:id="@+id/gnss_accuracy" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="7dp" android:text="4.2 m" android:textColor="@color/fg" android:textSize="22sp" android:textStyle="bold" />
+                <TextView android:id="@+id/gnss_details" style="@style/Text.Body" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="42.1 km/h · 284 valid samples" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/bg_surface"
+                android:orientation="vertical"
+                android:padding="15dp">
+
+                <TextView style="@style/Text.Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="ACCELERATION EXCITATION" />
+                <TextView android:id="@+id/excitation_value" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="7dp" android:text="GOOD" android:textColor="@color/good" android:textSize="22sp" android:textStyle="bold" />
+                <TextView android:id="@+id/excitation_details" style="@style/Text.Body" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="3.82 m²/s⁴ · 72% valid" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Azimuth convergence -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_surface"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView style="@style/Text.Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="MOUNT AZIMUTH CONVERGENCE" />
+            <TextView android:id="@+id/azimuth_estimate" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Manual +18.4°     Auto +17.9°     Δ 0.5°" android:textColor="@color/fg" android:textSize="14sp" android:textStyle="bold" />
+            <TextView android:id="@+id/azimuth_samples" style="@style/Text.Body" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="5dp" android:text="284 valid samples · residual 0.7° · circular consistency 94%" />
+            <ProgressBar android:id="@+id/azimuth_progress" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="7dp" android:layout_marginTop="12dp" android:max="100" android:progress="94" android:progressTint="@color/cyan" />
+        </LinearLayout>
+
+        <!-- Stability -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_surface"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView style="@style/Text.Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="STABILITY MONITORS" />
+            <TextView android:id="@+id/stationary_stability" style="@style/Text.Body" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="9dp" android:text="STATIONARY STABILITY     95%   ✓   18.4 s" />
+            <TextView android:id="@+id/gravity_stability" style="@style/Text.Body" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="9dp" android:text="GRAVITY STABILITY        96%   ✓   variance 0.014" />
+            <TextView android:id="@+id/mount_status" style="@style/Text.Body" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="9dp" android:text="MOUNT-CHANGE STATUS      ✓ STABLE   Δ yaw 0.4°" />
+        </LinearLayout>
+
+        <!-- Final transform -->
+        <TextView
+            style="@style/Text.Label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="04 · FINE-TUNED OUTPUT" />
+
+        <LinearLayout
+            android:id="@+id/final_transform_card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_surface"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView style="@style/Text.Label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="DEVICE → VEHICLE TRANSFORM" />
+            <TextView android:id="@+id/final_yaw" style="@style/Text.Body" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="Yaw offset       +17.9°" />
+            <TextView android:id="@+id/final_pitch" style="@style/Text.Body" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Pitch correction  −2.1°" />
+            <TextView android:id="@+id/final_roll" style="@style/Text.Body" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Roll correction   +4.7°" />
+            <TextView android:id="@+id/final_bias" style="@style/Text.Body" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Gyro bias         X 0.008 · Y 0.011 · Z 0.013" />
+            <TextView android:id="@+id/final_output_state" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="✓ VEHICLE FRAME READY · SAFE TO HAND OFF TO ESKF" android:textColor="@color/good" android:textStyle="bold" />
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/action_use_calibration"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/bg_primary"
+            android:text="USE CALIBRATION"
+            android:textColor="#04211F"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/action_recalibrate"
+            android:layout_width="match_parent"
+            android:layout_height="50dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="20dp"
+            android:background="@drawable/bg_surface"
+            android:text="RECALIBRATE"
+            android:textColor="@color/fg"
+            android:textStyle="bold" />
+
+    </LinearLayout>
+</ScrollView>
