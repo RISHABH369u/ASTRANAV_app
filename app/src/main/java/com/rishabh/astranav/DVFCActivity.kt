@@ -321,6 +321,9 @@ class DVFCActivity : AppCompatActivity() {
 
     private fun openQualityScreen() {
 
+        val state =
+            controller.state.value
+
         val transform =
             controller.lockedDeviceToVehicleTransform()
 
@@ -330,9 +333,147 @@ class DVFCActivity : AppCompatActivity() {
                 DVFCQualityActivity::class.java
             )
 
+        // ---------------------------------------------------------
+        // CALIBRATION
+        // ---------------------------------------------------------
+
         intent.putExtra(
             DVFCQualityActivity.EXTRA_TRANSFORM_VALID,
             transform != null
+        )
+
+        intent.putExtra(
+            DVFCQualityActivity.EXTRA_CALIBRATION_COMPLETE,
+            state.status ==
+                    CalibrationStatus.COMPLETE
+        )
+
+        // ---------------------------------------------------------
+        // ORIENTATION
+        // ---------------------------------------------------------
+
+        intent.putExtra(
+            DVFCQualityActivity.EXTRA_YAW,
+            state.yawDeg.toDouble()
+        )
+
+        intent.putExtra(
+            DVFCQualityActivity.EXTRA_PITCH,
+            state.pitchDeg.toDouble()
+        )
+
+        intent.putExtra(
+            DVFCQualityActivity.EXTRA_ROLL,
+            state.rollDeg.toDouble()
+        )
+
+        intent.putExtra(
+            DVFCQualityActivity.EXTRA_HEADING_OFFSET,
+            state.headingOffsetDeg.toDouble()
+        )
+
+        // ---------------------------------------------------------
+        // TIMESTAMP
+        // ---------------------------------------------------------
+
+        intent.putExtra(
+            DVFCQualityActivity.EXTRA_SAMPLE_COUNT,
+            state.sampleCount
+        )
+
+        intent.putExtra(
+            DVFCQualityActivity.EXTRA_TIMESTAMP_JITTER,
+            state.timestampJitterMs
+                ?: -1.0
+        )
+
+        intent.putExtra(
+            DVFCQualityActivity.EXTRA_SAMPLE_HZ,
+            state.estimatedSampleHz
+                ?: -1.0
+        )
+
+        intent.putExtra(
+            DVFCQualityActivity.EXTRA_GAP_COUNT,
+            state.dataGapCount
+        )
+
+        intent.putExtra(
+            DVFCQualityActivity.EXTRA_MAX_GAP,
+            state.maxGapMs
+                ?: -1.0
+        )
+
+        // ---------------------------------------------------------
+        // STATIONARY
+        // ---------------------------------------------------------
+
+        intent.putExtra(
+            DVFCQualityActivity.EXTRA_STATIONARY_SAMPLES,
+            state.stationarySampleCount
+        )
+
+        intent.putExtra(
+            DVFCQualityActivity.EXTRA_STATIONARY_SCORE,
+            state.stationaryScore
+                ?: -1.0
+        )
+
+        // ---------------------------------------------------------
+        // GYRO BIAS
+        // ---------------------------------------------------------
+
+        intent.putExtra(
+            DVFCQualityActivity.EXTRA_GYRO_BIAS_X,
+            state.gyroBiasX
+                ?: Double.NaN
+        )
+
+        intent.putExtra(
+            DVFCQualityActivity.EXTRA_GYRO_BIAS_Y,
+            state.gyroBiasY
+                ?: Double.NaN
+        )
+
+        intent.putExtra(
+            DVFCQualityActivity.EXTRA_GYRO_BIAS_Z,
+            state.gyroBiasZ
+                ?: Double.NaN
+        )
+
+        intent.putExtra(
+            DVFCQualityActivity.EXTRA_GYRO_RMS,
+            state.gyroMagnitudeRms
+                ?: -1.0
+        )
+
+        // ---------------------------------------------------------
+        // SENSOR AVAILABILITY
+        // ---------------------------------------------------------
+
+        intent.putExtra(
+            DVFCQualityActivity.EXTRA_SENSORS_AVAILABLE,
+            state.sensorsAvailable
+        )
+
+        intent.putExtra(
+            DVFCQualityActivity.EXTRA_GRAVITY_AVAILABLE,
+            state.gravityAvailable
+        )
+
+        intent.putExtra(
+            DVFCQualityActivity.EXTRA_ACCELERATION_AVAILABLE,
+            state.accelerationAvailable
+        )
+
+        intent.putExtra(
+            DVFCQualityActivity.EXTRA_GNSS_AVAILABLE,
+            state.gnssAvailable
+        )
+
+        intent.putExtra(
+            DVFCQualityActivity.EXTRA_AUTO_AZIMUTH_AVAILABLE,
+            state.automaticAzimuthAvailable
         )
 
         startActivityForResult(
