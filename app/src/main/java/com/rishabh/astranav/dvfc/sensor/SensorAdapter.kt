@@ -7,12 +7,13 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import com.rishabh.astranav.dvfc.math.Quat
 import kotlin.math.abs
+import kotlin.math.atan2
 import kotlin.math.sqrt
 
 /**
- * SENSOR ADAPTER
+ * ASTRANAV Sensor Adapter
  *
- * Responsibility:
+ * RAW SENSORS
  *
  * Accelerometer
  * Gyroscope
@@ -21,11 +22,12 @@ import kotlin.math.sqrt
  *
  *        ↓
  *
- * Timestamp synchronization
+ * Timestamp diagnostics
  * Unit validation
- * Gap detection
- * 10 Hz resampling
- * Gravity monitoring
+ * Per-sensor gap detection
+ * Duplicate timestamp detection
+ * Explicit 10 Hz processing timeline
+ * Gravity handling
  *
  *        ↓
  *
@@ -33,7 +35,7 @@ import kotlin.math.sqrt
  *
  *        ↓
  *
- * DVFC / downstream estimator
+ * DVFC
  */
 class SensorAdapter(
     context: Context,
@@ -41,169 +43,233 @@ class SensorAdapter(
 ) : SensorEventListener {
 
     private val sensorManager =
-        context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        context.getSystemService(
+            Context.SENSOR_SERVICE
+        ) as SensorManager
+
+    // =========================================================
+    // SENSOR HARDWARE REFERENCES
+    // =========================================================
 
     private val accelerometer =
-        sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        sensorManager.getDefaultSensor(
+            Sensor.TYPE_ACCELEROMETER
+        )
 
-    private val gyroscope =
-        sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
+    private val gyroscopeSensor =
+        sensorManager.getDefaultSensor(
+            Sensor.TYPE_GYROSCOPE
+        )
 
     private val gravitySensor =
-        sensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY)
+        sensorManager.getDefaultSensor(
+            Sensor.TYPE_GRAVITY
+        )
 
     private val rotationVector =
-        sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+        sensorManager.getDefaultSensor(
+            Sensor.TYPE_ROTATION_VECTOR
+        )
 
-    // ---------------------------------------------------------
-    // TARGET RESAMPLING
-    // ---------------------------------------------------------
+    // =========================================================
+    // TARGET PROCESSING RATE
+    // =========================================================
 
-    /**
-     * ASTRANAV adapter output rate.
-     *
-     * 10 Hz = one synchronized sample every 100 ms.
-     */
-    private val targetPeriodNs = 100_000_000L
+    companion object {
 
-    private var nextOutputTimestampNs = 0L
+        private const val TARGET_HZ = 10.0f
 
-    // ---------------------------------------------------------
+        private const val TARGET_PERIOD_NS =
+            100_000_000L
+
+        /*
+         * Maximum acceptable distance between the target
+         * processing timestamp and the newest synchronized
+         * sensor sample.
+         */
+        private const val SYNC_TOLERANCE_NS =
+            50_000_000L
+
+        /*
+         * Gap is considered significant when a sensor's
+         * timestamp interval is > 3 × its nominal period.
+         */
+        private const val GAP_MULTIPLIER = 3.0
+
+        private const val GRAVITY_NOMINAL = 9.80665f
+
+        private const val GRAVITY_TOLERANCE = 0.35f
+    }
+
+    // =========================================================
     // LATEST SENSOR VALUES
-    // ---------------------------------------------------------
+    // =========================================================
 
-    private var latestAcceleration: FloatArray? = null
+    private var acceleration: FloatArray? = null
+
+    /*
+     * Latest gyroscope measurement.
+     *
+     * IMPORTANT:
+     * This is intentionally named differently from
+     * gyroscopeSensor, which represents the Android Sensor
+     * hardware object.
+     */
     private var latestGyroscope: FloatArray? = null
-    private var latestGravity: FloatArray? = null
-    private var latestQuaternion: Quat? = null
 
-    private var latestRotationAccuracy =
+    private var gravity: FloatArray? = null
+
+    private var quaternion: Quat? = null
+
+    private var rotationAccuracy =
         SensorManager.SENSOR_STATUS_UNRELIABLE
 
-    // ---------------------------------------------------------
-    // TIMESTAMP DIAGNOSTICS
-    // ---------------------------------------------------------
+    // =========================================================
+    // PER SENSOR TIMESTAMPS
+    // =========================================================
 
-    private var previousSensorTimestampNs = 0L
+    private var lastAccelTimestampNs = 0L
 
-    private var sampleCount = 0
+    private var lastGyroTimestampNs = 0L
+
+    private var lastGravityTimestampNs = 0L
+
+    private var lastRotationTimestampNs = 0L
+
+    // =========================================================
+    // PER SENSOR DIAGNOSTICS
+    // =========================================================
+
+    private var accelSampleCount = 0
+    private var gyroSampleCount = 0
+    private var gravitySampleCount = 0
+    private var rotationSampleCount = 0
+
+    private var accelGapCount = 0
+    private var gyroGapCount = 0
+    private var gravityGapCount = 0
+    private var rotationGapCount = 0
+
+    private var accelMaxGapNs = 0L
+    private var gyroMaxGapNs = 0L
+    private var gravityMaxGapNs = 0L
+    private var rotationMaxGapNs = 0L
+
+    private var duplicateTimestampCount = 0
+
+    // =========================================================
+    // RATE / JITTER
+    // =========================================================
 
     private var intervalCount = 0
 
-    private var intervalSumNs = 0L
+    private var intervalSumNs = 0.0
 
-    private var jitterSumNs = 0.0
+    private var jitterSumSquaredNs = 0.0
 
-    private var gapCount = 0
+    // =========================================================
+    // OUTPUT TIMELINE
+    // =========================================================
 
-    private var maxGapNs = 0L
+    private var nextOutputTimestampNs = 0L
 
-    // ---------------------------------------------------------
+    private var outputSampleCount = 0
+
+    // =========================================================
     // GRAVITY
-    // ---------------------------------------------------------
+    // =========================================================
 
     private var gravityMagnitude = 0f
 
-    private var gravityStable = false
-
     private var gravityStableCounter = 0
 
-    // ---------------------------------------------------------
+    private var gravityStable = false
+
+    // =========================================================
     // AVAILABILITY
-    // ---------------------------------------------------------
+    // =========================================================
 
     val isAvailable: Boolean
-        get() = rotationVector != null &&
-                gyroscope != null &&
-                accelerometer != null
+        get() =
+            accelerometer != null &&
+                    gyroscopeSensor != null &&
+                    rotationVector != null
 
     val hasGravitySensor: Boolean
-        get() = gravitySensor != null
+        get() =
+            gravitySensor != null
 
-    // ---------------------------------------------------------
+    // =========================================================
     // START
-    // ---------------------------------------------------------
+    // =========================================================
 
     fun start() {
 
-        nextOutputTimestampNs = 0L
-
-        previousSensorTimestampNs = 0L
-
-        sampleCount = 0
-        intervalCount = 0
-        intervalSumNs = 0L
-        jitterSumNs = 0.0
-
-        gapCount = 0
-        maxGapNs = 0L
-
-        gravityStableCounter = 0
+        resetDiagnostics()
 
         accelerometer?.let {
+
             sensorManager.registerListener(
                 this,
                 it,
-                SensorManager.SENSOR_DELAY_GAME,
+                SensorManager.SENSOR_DELAY_GAME
             )
         }
 
-        gyroscope?.let {
+        gyroscopeSensor?.let {
+
             sensorManager.registerListener(
                 this,
                 it,
-                SensorManager.SENSOR_DELAY_GAME,
+                SensorManager.SENSOR_DELAY_GAME
             )
         }
 
         gravitySensor?.let {
+
             sensorManager.registerListener(
                 this,
                 it,
-                SensorManager.SENSOR_DELAY_GAME,
+                SensorManager.SENSOR_DELAY_GAME
             )
         }
 
         rotationVector?.let {
+
             sensorManager.registerListener(
                 this,
                 it,
-                SensorManager.SENSOR_DELAY_GAME,
+                SensorManager.SENSOR_DELAY_GAME
             )
         }
     }
 
-    // ---------------------------------------------------------
+    // =========================================================
     // STOP
-    // ---------------------------------------------------------
+    // =========================================================
 
     fun stop() {
-        sensorManager.unregisterListener(this)
+
+        sensorManager.unregisterListener(
+            this
+        )
     }
 
-    // ---------------------------------------------------------
+    // =========================================================
     // SENSOR CALLBACK
-    // ---------------------------------------------------------
+    // =========================================================
 
-    override fun onSensorChanged(event: SensorEvent) {
+    override fun onSensorChanged(
+        event: SensorEvent
+    ) {
 
         if (event.values.isEmpty()) {
             return
         }
 
-        if (!isFinite(event.values)) {
+        if (!valuesAreFinite(event.values)) {
             return
         }
-
-        // -----------------------------------------------------
-        // TIMESTAMP DIAGNOSTICS
-        // -----------------------------------------------------
-
-        updateTimestampDiagnostics(event.timestamp)
-
-        // -----------------------------------------------------
-        // SENSOR DATA
-        // -----------------------------------------------------
 
         when (event.sensor.type) {
 
@@ -211,11 +277,20 @@ class SensorAdapter(
 
                 if (event.values.size >= 3) {
 
-                    latestAcceleration = floatArrayOf(
-                        event.values[0],
-                        event.values[1],
-                        event.values[2],
-                    )
+                    if (
+                        !updateSensorTimestamp(
+                            event.timestamp,
+                            SensorType.ACCELEROMETER
+                        )
+                    ) {
+                        return
+                    }
+
+                    acceleration =
+                        event.values.copyOfRange(
+                            0,
+                            3
+                        )
                 }
             }
 
@@ -223,11 +298,20 @@ class SensorAdapter(
 
                 if (event.values.size >= 3) {
 
-                    latestGyroscope = floatArrayOf(
-                        event.values[0],
-                        event.values[1],
-                        event.values[2],
-                    )
+                    if (
+                        !updateSensorTimestamp(
+                            event.timestamp,
+                            SensorType.GYROSCOPE
+                        )
+                    ) {
+                        return
+                    }
+
+                    latestGyroscope =
+                        event.values.copyOfRange(
+                            0,
+                            3
+                        )
                 }
             }
 
@@ -235,13 +319,24 @@ class SensorAdapter(
 
                 if (event.values.size >= 3) {
 
-                    latestGravity = floatArrayOf(
-                        event.values[0],
-                        event.values[1],
-                        event.values[2],
-                    )
+                    if (
+                        !updateSensorTimestamp(
+                            event.timestamp,
+                            SensorType.GRAVITY
+                        )
+                    ) {
+                        return
+                    }
 
-                    updateGravityMonitor(latestGravity!!)
+                    gravity =
+                        event.values.copyOfRange(
+                            0,
+                            3
+                        )
+
+                    updateGravityDiagnostics(
+                        gravity!!
+                    )
                 }
             }
 
@@ -249,119 +344,356 @@ class SensorAdapter(
 
                 if (event.values.size >= 3) {
 
-                    latestQuaternion =
-                        rotationVectorToQuaternion(event.values)
+                    if (
+                        !updateSensorTimestamp(
+                            event.timestamp,
+                            SensorType.ROTATION
+                        )
+                    ) {
+                        return
+                    }
 
-                    latestRotationAccuracy =
+                    quaternion =
+                        rotationVectorToQuaternion(
+                            event.values
+                        )
+
+                    rotationAccuracy =
                         event.accuracy
                 }
             }
         }
 
-        // -----------------------------------------------------
-        // SYNCHRONIZED OUTPUT
-        // -----------------------------------------------------
-
-        emitResampledSamples(event.timestamp)
+        emitSynchronizedSample(
+            event.timestamp
+        )
     }
 
-    // ---------------------------------------------------------
-    // TIMESTAMP SYNCHRONIZATION / DIAGNOSTICS
-    // ---------------------------------------------------------
+    // =========================================================
+    // TIMESTAMP HANDLING
+    // =========================================================
 
-    private fun updateTimestampDiagnostics(timestampNs: Long) {
+    private fun updateSensorTimestamp(
+        timestampNs: Long,
+        type: SensorType
+    ): Boolean {
 
-        if (previousSensorTimestampNs != 0L) {
+        val previous =
+            when (type) {
 
-            val intervalNs =
-                timestampNs - previousSensorTimestampNs
+                SensorType.ACCELEROMETER ->
+                    lastAccelTimestampNs
 
-            // Ignore impossible timestamp ordering.
-            if (intervalNs <= 0L) {
-                return
+                SensorType.GYROSCOPE ->
+                    lastGyroTimestampNs
+
+                SensorType.GRAVITY ->
+                    lastGravityTimestampNs
+
+                SensorType.ROTATION ->
+                    lastRotationTimestampNs
             }
 
-            intervalCount++
+        /*
+         * Duplicate / out-of-order timestamp.
+         */
+        if (
+            previous != 0L &&
+            timestampNs <= previous
+        ) {
 
-            intervalSumNs += intervalNs
+            duplicateTimestampCount++
 
-            val expectedIntervalNs =
-                100_000_000L
+            return false
+        }
 
-            val jitterNs =
-                abs(intervalNs - expectedIntervalNs)
+        if (previous != 0L) {
 
-            jitterSumNs += jitterNs.toDouble()
+            val dt =
+                timestampNs - previous
+
+            val nominalPeriod =
+                estimateNominalPeriodNs(
+                    type
+                )
+
+            if (
+                dt >
+                nominalPeriod * GAP_MULTIPLIER
+            ) {
+
+                registerGap(
+                    type,
+                    dt
+                )
+            }
 
             /*
-             * A gap larger than 2.5x our target 10 Hz period
-             * is considered a data gap.
+             * Global rate diagnostics are based only on
+             * rotation-vector samples, because those are
+             * the samples that drive the DVFC orientation
+             * stream.
              */
-            if (intervalNs > expectedIntervalNs * 2.5) {
+            if (
+                type ==
+                SensorType.ROTATION
+            ) {
 
-                gapCount++
+                intervalCount++
 
-                if (intervalNs > maxGapNs) {
-                    maxGapNs = intervalNs
-                }
+                intervalSumNs +=
+                    dt.toDouble()
+
+                val meanSoFar =
+                    intervalSumNs /
+                            intervalCount
+
+                val error =
+                    dt.toDouble() -
+                            meanSoFar
+
+                jitterSumSquaredNs +=
+                    error * error
             }
         }
 
-        previousSensorTimestampNs = timestampNs
+        when (type) {
+
+            SensorType.ACCELEROMETER -> {
+
+                lastAccelTimestampNs =
+                    timestampNs
+
+                accelSampleCount++
+            }
+
+            SensorType.GYROSCOPE -> {
+
+                lastGyroTimestampNs =
+                    timestampNs
+
+                gyroSampleCount++
+            }
+
+            SensorType.GRAVITY -> {
+
+                lastGravityTimestampNs =
+                    timestampNs
+
+                gravitySampleCount++
+            }
+
+            SensorType.ROTATION -> {
+
+                lastRotationTimestampNs =
+                    timestampNs
+
+                rotationSampleCount++
+            }
+        }
+
+        return true
     }
 
-    // ---------------------------------------------------------
-    // RESAMPLING
-    // ---------------------------------------------------------
+    // =========================================================
+    // NOMINAL SENSOR RATE
+    // =========================================================
 
-    private fun emitResampledSamples(timestampNs: Long) {
+    private fun estimateNominalPeriodNs(
+        type: SensorType
+    ): Long {
 
         /*
-         * We cannot produce a synchronized sample until the
-         * required sensor streams have supplied data.
+         * Android SENSOR_DELAY_GAME typically delivers
+         * considerably faster than the 10 Hz navigation
+         * processing rate.
+         *
+         * We use a conservative 50 Hz diagnostic baseline.
          */
-        val acceleration = latestAcceleration ?: return
-        val gyro = latestGyroscope ?: return
-        val gravity = latestGravity ?: return
-        val quaternion = latestQuaternion ?: return
+        return 20_000_000L
+    }
 
-        if (nextOutputTimestampNs == 0L) {
+    // =========================================================
+    // GAP REGISTRATION
+    // =========================================================
 
-            nextOutputTimestampNs = timestampNs
+    private fun registerGap(
+        type: SensorType,
+        gapNs: Long
+    ) {
+
+        when (type) {
+
+            SensorType.ACCELEROMETER -> {
+
+                accelGapCount++
+
+                accelMaxGapNs =
+                    maxOf(
+                        accelMaxGapNs,
+                        gapNs
+                    )
+            }
+
+            SensorType.GYROSCOPE -> {
+
+                gyroGapCount++
+
+                gyroMaxGapNs =
+                    maxOf(
+                        gyroMaxGapNs,
+                        gapNs
+                    )
+            }
+
+            SensorType.GRAVITY -> {
+
+                gravityGapCount++
+
+                gravityMaxGapNs =
+                    maxOf(
+                        gravityMaxGapNs,
+                        gapNs
+                    )
+            }
+
+            SensorType.ROTATION -> {
+
+                rotationGapCount++
+
+                rotationMaxGapNs =
+                    maxOf(
+                        rotationMaxGapNs,
+                        gapNs
+                    )
+            }
+        }
+    }
+
+    // =========================================================
+    // SYNCHRONIZED OUTPUT
+    // =========================================================
+
+    private fun emitSynchronizedSample(
+        eventTimestampNs: Long
+    ) {
+
+        val acc =
+            acceleration ?: return
+
+        val gyro =
+            latestGyroscope ?: return
+
+        val grav =
+            gravity ?: return
+
+        val quat =
+            quaternion ?: return
+
+        /*
+         * We need all streams close enough to the same
+         * processing timestamp.
+         */
+        if (
+            !streamsSynchronized(
+                eventTimestampNs
+            )
+        ) {
             return
         }
 
+        if (
+            nextOutputTimestampNs == 0L
+        ) {
+
+            nextOutputTimestampNs =
+                eventTimestampNs
+        }
+
         /*
-         * Emit samples at a deterministic 10 Hz timeline.
+         * Explicit 10 Hz processing timeline.
          *
-         * Current implementation uses the latest validated
-         * sample for each sensor at the output timestamp.
-         *
-         * This gives us a stable common timeline. Later the
-         * same interface can be upgraded to linear interpolation
-         * without changing DVFC.
+         * We do not claim interpolation here.
+         * The synchronized latest sample is emitted only
+         * when all streams are within tolerance.
          */
-        while (timestampNs >= nextOutputTimestampNs) {
+        if (
+            eventTimestampNs <
+            nextOutputTimestampNs
+        ) {
+            return
+        }
 
-            val sample = DeviceSensorSample(
+        val linearAcceleration =
+            computeLinearAcceleration(
+                acc,
+                grav
+            )
 
-                timestampNs = nextOutputTimestampNs,
+        val level =
+            computeGravityLevel(
+                grav
+            )
 
-                acceleration = acceleration.copyOf(),
+        val sample =
+            DeviceSensorSample(
 
-                angularVelocity = gyro.copyOf(),
+                timestampNs =
+                    nextOutputTimestampNs,
 
-                gravity = gravity.copyOf(),
+                acceleration =
+                    acc.copyOf(),
 
-                quaternion = quaternion,
+                angularVelocity =
+                    gyro.copyOf(),
 
-                rotationAccuracy = latestRotationAccuracy,
+                gravity =
+                    grav.copyOf(),
+
+                linearAcceleration =
+                    linearAcceleration,
+
+                quaternion =
+                    quat,
+
+                gravityMagnitude =
+                    gravityMagnitude,
+
+                gravityStable =
+                    gravityStable,
+
+                gravityLevelRollDeg =
+                    level.first,
+
+                gravityLevelPitchDeg =
+                    level.second,
+
+                estimatedSampleHz =
+                    calculateSampleHz(),
+
+                timestampJitterMs =
+                    calculateJitterMs(),
+
+                dataGapCount =
+                    totalGapCount(),
+
+                maxGapMs =
+                    maxGapMs(),
+
+                duplicateTimestampCount =
+                    duplicateTimestampCount,
+
+                resamplingActive =
+                    true,
+
+                resamplingRateHz =
+                    TARGET_HZ,
 
                 accelerationAvailable =
                     accelerometer != null,
 
                 gyroscopeAvailable =
-                    gyroscope != null,
+                    gyroscopeSensor != null,
 
                 gravityAvailable =
                     gravitySensor != null,
@@ -369,53 +701,110 @@ class SensorAdapter(
                 rotationVectorAvailable =
                     rotationVector != null,
 
-                estimatedSampleHz =
-                    calculateSampleHz(),
-
-                timestampJitterMs =
-                    calculateTimestampJitterMs(),
-
-                dataGapCount =
-                    gapCount,
-
-                maxGapMs =
-                    maxGapNs / 1_000_000f,
-
-                gravityMagnitude =
-                    gravityMagnitude,
-
-                gravityStable =
-                    gravityStable,
+                rotationAccuracy =
+                    rotationAccuracy
             )
 
-            onSample(sample)
+        onSample(
+            sample
+        )
 
-            sampleCount++
+        outputSampleCount++
 
-            nextOutputTimestampNs += targetPeriodNs
-
-            /*
-             * Prevent an enormous catch-up loop if the phone
-             * was paused or sensor delivery was interrupted.
-             */
-            if (nextOutputTimestampNs < timestampNs - targetPeriodNs * 10) {
-                nextOutputTimestampNs =
-                    timestampNs + targetPeriodNs
-
-                break
-            }
-        }
+        nextOutputTimestampNs +=
+            TARGET_PERIOD_NS
     }
 
-    // ---------------------------------------------------------
+    // =========================================================
+    // STREAM SYNCHRONIZATION
+    // =========================================================
+
+    private fun streamsSynchronized(
+        timestampNs: Long
+    ): Boolean {
+
+        val timestamps =
+            longArrayOf(
+                lastAccelTimestampNs,
+                lastGyroTimestampNs,
+                lastGravityTimestampNs,
+                lastRotationTimestampNs
+            )
+
+        if (
+            timestamps.any {
+                it == 0L
+            }
+        ) {
+            return false
+        }
+
+        val newest =
+            timestamps.maxOrNull()
+                ?: return false
+
+        val oldest =
+            timestamps.minOrNull()
+                ?: return false
+
+        /*
+         * All sensor streams must be close enough to one
+         * another to form a valid synchronized sample.
+         */
+        if (
+            newest - oldest >
+            SYNC_TOLERANCE_NS
+        ) {
+            return false
+        }
+
+        /*
+         * Also make sure the event itself has not moved
+         * too far away from the synchronized sensor group.
+         */
+        return abs(
+            timestampNs - newest
+        ) <= SYNC_TOLERANCE_NS
+    }
+
+    // =========================================================
+    // GRAVITY COMPENSATION
+    // =========================================================
+
+    private fun computeLinearAcceleration(
+        acceleration: FloatArray,
+        gravity: FloatArray
+    ): FloatArray {
+
+        return floatArrayOf(
+
+            acceleration[0] -
+                    gravity[0],
+
+            acceleration[1] -
+                    gravity[1],
+
+            acceleration[2] -
+                    gravity[2]
+        )
+    }
+
+    // =========================================================
     // GRAVITY MONITOR
-    // ---------------------------------------------------------
+    // =========================================================
 
-    private fun updateGravityMonitor(gravity: FloatArray) {
+    private fun updateGravityDiagnostics(
+        value: FloatArray
+    ) {
 
-        val x = gravity[0].toDouble()
-        val y = gravity[1].toDouble()
-        val z = gravity[2].toDouble()
+        val x =
+            value[0].toDouble()
+
+        val y =
+            value[1].toDouble()
+
+        val z =
+            value[2].toDouble()
 
         gravityMagnitude =
             sqrt(
@@ -424,14 +813,16 @@ class SensorAdapter(
                         z * z
             ).toFloat()
 
-        /*
-         * Earth's gravity should be approximately
-         * 9.81 m/s².
-         */
-        val magnitudeError =
-            abs(gravityMagnitude - 9.81f)
+        val error =
+            abs(
+                gravityMagnitude -
+                        GRAVITY_NOMINAL
+            )
 
-        if (magnitudeError <= 0.35f) {
+        if (
+            error <=
+            GRAVITY_TOLERANCE
+        ) {
 
             gravityStableCounter++
 
@@ -440,105 +831,238 @@ class SensorAdapter(
             gravityStableCounter = 0
         }
 
-        /*
-         * Require several consecutive valid samples before
-         * calling gravity stable.
-         */
         gravityStable =
             gravityStableCounter >= 5
     }
 
-    // ---------------------------------------------------------
+    // =========================================================
+    // GRAVITY LEVELING
+    // =========================================================
+
+    /**
+     * Estimates roll/pitch required to level the device
+     * using the measured gravity vector.
+     *
+     * This is a leveling diagnostic.
+     * It does not replace the Device → Vehicle yaw
+     * calibration.
+     */
+    private fun computeGravityLevel(
+        gravity: FloatArray
+    ): Pair<Float, Float> {
+
+        val gx =
+            gravity[0].toDouble()
+
+        val gy =
+            gravity[1].toDouble()
+
+        val gz =
+            gravity[2].toDouble()
+
+        val roll =
+            Math.toDegrees(
+                atan2(
+                    gy,
+                    gz
+                )
+            ).toFloat()
+
+        val pitch =
+            Math.toDegrees(
+                atan2(
+                    -gx,
+                    sqrt(
+                        gy * gy +
+                                gz * gz
+                    )
+                )
+            ).toFloat()
+
+        return Pair(
+            roll,
+            pitch
+        )
+    }
+
+    // =========================================================
     // ROTATION VECTOR → QUATERNION
-    // ---------------------------------------------------------
+    // =========================================================
 
     private fun rotationVectorToQuaternion(
-        values: FloatArray,
+        values: FloatArray
     ): Quat {
 
-        val q = FloatArray(4)
+        val q =
+            FloatArray(4)
 
         SensorManager.getQuaternionFromVector(
             q,
-            values,
+            values
         )
 
-        /*
-         * Android:
-         *
-         * q[0] = w
-         * q[1] = x
-         * q[2] = y
-         * q[3] = z
-         */
         return Quat(
             x = q[1],
             y = q[2],
             z = q[3],
-            w = q[0],
+            w = q[0]
         ).normalized()
     }
 
-    // ---------------------------------------------------------
+    // =========================================================
     // DIAGNOSTICS
-    // ---------------------------------------------------------
+    // =========================================================
 
     private fun calculateSampleHz(): Float {
 
-        if (intervalCount == 0) {
+        if (
+            intervalCount <= 0
+        ) {
             return 0f
         }
 
-        val averageIntervalNs =
-            intervalSumNs.toDouble() / intervalCount
+        val meanNs =
+            intervalSumNs /
+                    intervalCount
 
-        if (averageIntervalNs <= 0.0) {
+        if (
+            meanNs <= 0.0
+        ) {
             return 0f
         }
 
         return (
                 1_000_000_000.0 /
-                        averageIntervalNs
+                        meanNs
                 ).toFloat()
     }
 
-    private fun calculateTimestampJitterMs(): Float {
+    private fun calculateJitterMs(): Float {
 
-        if (intervalCount == 0) {
+        if (
+            intervalCount <= 1
+        ) {
             return 0f
         }
 
+        val variance =
+            jitterSumSquaredNs /
+                    intervalCount
+
         return (
-                jitterSumNs /
-                        intervalCount /
+                sqrt(
+                    variance
+                ) /
                         1_000_000.0
                 ).toFloat()
     }
 
-    // ---------------------------------------------------------
-    // FINITE CHECK
-    // ---------------------------------------------------------
+    private fun totalGapCount(): Int {
 
-    private fun isFinite(values: FloatArray): Boolean {
+        return accelGapCount +
+                gyroGapCount +
+                gravityGapCount +
+                rotationGapCount
+    }
 
-        for (value in values) {
+    private fun maxGapMs(): Float {
 
-            if (!value.isFinite()) {
-                return false
-            }
+        val maxNs =
+            maxOf(
+                accelMaxGapNs,
+                gyroMaxGapNs,
+                gravityMaxGapNs,
+                rotationMaxGapNs
+            )
+
+        return maxNs /
+                1_000_000f
+    }
+
+    // =========================================================
+    // VALIDATION
+    // =========================================================
+
+    private fun valuesAreFinite(
+        values: FloatArray
+    ): Boolean {
+
+        return values.all {
+            it.isFinite()
         }
+    }
 
-        return true
+    // =========================================================
+    // RESET
+    // =========================================================
+
+    private fun resetDiagnostics() {
+
+        acceleration = null
+        latestGyroscope = null
+        gravity = null
+        quaternion = null
+
+        lastAccelTimestampNs = 0L
+        lastGyroTimestampNs = 0L
+        lastGravityTimestampNs = 0L
+        lastRotationTimestampNs = 0L
+
+        accelSampleCount = 0
+        gyroSampleCount = 0
+        gravitySampleCount = 0
+        rotationSampleCount = 0
+
+        accelGapCount = 0
+        gyroGapCount = 0
+        gravityGapCount = 0
+        rotationGapCount = 0
+
+        accelMaxGapNs = 0L
+        gyroMaxGapNs = 0L
+        gravityMaxGapNs = 0L
+        rotationMaxGapNs = 0L
+
+        duplicateTimestampCount = 0
+
+        intervalCount = 0
+        intervalSumNs = 0.0
+        jitterSumSquaredNs = 0.0
+
+        nextOutputTimestampNs = 0L
+        outputSampleCount = 0
+
+        gravityMagnitude = 0f
+        gravityStableCounter = 0
+        gravityStable = false
+
+        rotationAccuracy =
+            SensorManager.SENSOR_STATUS_UNRELIABLE
+    }
+
+    // =========================================================
+    // TYPES
+    // =========================================================
+
+    private enum class SensorType {
+        ACCELEROMETER,
+        GYROSCOPE,
+        GRAVITY,
+        ROTATION
     }
 
     override fun onAccuracyChanged(
         sensor: Sensor?,
-        accuracy: Int,
+        accuracy: Int
     ) {
 
-        if (sensor?.type == Sensor.TYPE_ROTATION_VECTOR) {
+        if (
+            sensor?.type ==
+            Sensor.TYPE_ROTATION_VECTOR
+        ) {
 
-            latestRotationAccuracy = accuracy
+            rotationAccuracy =
+                accuracy
         }
     }
 }

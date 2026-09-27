@@ -89,6 +89,30 @@ class DVFCQualityActivity : AppCompatActivity() {
 
         const val EXTRA_AUTO_AZIMUTH_AVAILABLE =
             "dvfc_auto_azimuth_available"
+
+        const val EXTRA_DUPLICATE_TIMESTAMPS =
+            "dvfc_duplicate_timestamps"
+
+        const val EXTRA_RESAMPLING_ACTIVE =
+            "dvfc_resampling_active"
+
+        const val EXTRA_RESAMPLING_RATE_HZ =
+            "dvfc_resampling_rate_hz"
+
+        const val EXTRA_GRAVITY_MAGNITUDE =
+            "dvfc_gravity_magnitude"
+
+        const val EXTRA_GRAVITY_STABLE =
+            "dvfc_gravity_stable"
+
+        const val EXTRA_GRAVITY_ROLL =
+            "dvfc_gravity_roll"
+
+        const val EXTRA_GRAVITY_PITCH =
+            "dvfc_gravity_pitch"
+
+        const val EXTRA_LINEAR_ACCELERATION_MAGNITUDE =
+            "dvfc_linear_acceleration_magnitude"
     }
 
     private lateinit var score: TextView
@@ -122,6 +146,22 @@ class DVFCQualityActivity : AppCompatActivity() {
     private var accelerationAvailable = false
     private var gnssAvailable = false
     private var autoAzimuthAvailable = false
+
+    private var duplicateTimestampCount = 0
+
+    private var resamplingActive = false
+
+    private var resamplingRateHz = -1.0
+
+    private var gravityMagnitude = -1.0
+
+    private var gravityStable = false
+
+    private var gravityLevelRollDeg = 0.0
+
+    private var gravityLevelPitchDeg = 0.0
+
+    private var linearAccelerationMagnitude = -1.0
 
 
     override fun onCreate(
@@ -260,6 +300,54 @@ class DVFCQualityActivity : AppCompatActivity() {
                 false
             )
 
+        duplicateTimestampCount =
+            intent.getIntExtra(
+                EXTRA_DUPLICATE_TIMESTAMPS,
+                0
+            )
+
+        resamplingActive =
+            intent.getBooleanExtra(
+                EXTRA_RESAMPLING_ACTIVE,
+                false
+            )
+
+        resamplingRateHz =
+            intent.getDoubleExtra(
+                EXTRA_RESAMPLING_RATE_HZ,
+                -1.0
+            )
+
+        gravityMagnitude =
+            intent.getDoubleExtra(
+                EXTRA_GRAVITY_MAGNITUDE,
+                -1.0
+            )
+
+        gravityStable =
+            intent.getBooleanExtra(
+                EXTRA_GRAVITY_STABLE,
+                false
+            )
+
+        gravityLevelRollDeg =
+            intent.getDoubleExtra(
+                EXTRA_GRAVITY_ROLL,
+                0.0
+            )
+
+        gravityLevelPitchDeg =
+            intent.getDoubleExtra(
+                EXTRA_GRAVITY_PITCH,
+                0.0
+            )
+
+        linearAccelerationMagnitude =
+            intent.getDoubleExtra(
+                EXTRA_LINEAR_ACCELERATION_MAGNITUDE,
+                -1.0
+            )
+
 
         score =
             findViewById(R.id.dvfcQualityScore)
@@ -390,8 +478,23 @@ class DVFCQualityActivity : AppCompatActivity() {
         //
 
         val resamplingState =
-            EvidenceState.WAITING
+            when {
 
+                sampleCount < 10 ->
+                    EvidenceState.WAITING
+
+                !resamplingActive ->
+                    EvidenceState.WAITING
+
+                resamplingRateHz <= 0.0 ->
+                    EvidenceState.WAITING
+
+                resamplingRateHz in 9.0..11.0 ->
+                    EvidenceState.PASS
+
+                else ->
+                    EvidenceState.WARN
+            }
 
         // =========================================================
         // UNIT NORMALIZATION
@@ -427,10 +530,26 @@ class DVFCQualityActivity : AppCompatActivity() {
 
 
         val gravityState =
-            if (gravityAvailable) {
-                EvidenceState.PASS
-            } else {
-                EvidenceState.WAITING
+            when {
+
+                sampleCount < 10 ->
+                    EvidenceState.WAITING
+
+                !gravityAvailable ->
+                    EvidenceState.WAITING
+
+                gravityMagnitude < 0.0 ->
+                    EvidenceState.WAITING
+
+                gravityMagnitude in 9.2..10.4 &&
+                        gravityStable ->
+                    EvidenceState.PASS
+
+                gravityMagnitude in 8.5..11.0 ->
+                    EvidenceState.WARN
+
+                else ->
+                    EvidenceState.FAIL
             }
 
 
@@ -564,7 +683,11 @@ class DVFCQualityActivity : AppCompatActivity() {
                         },
 
                     outputHz =
-                        null,
+                        if (resamplingRateHz > 0.0) {
+                            resamplingRateHz
+                        } else {
+                            null
+                        },
 
                     gravity =
                         gravityState

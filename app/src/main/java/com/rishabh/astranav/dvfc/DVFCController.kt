@@ -16,38 +16,54 @@ import kotlin.math.sqrt
 
 data class DvfcUiState(
 
-    // ---------------------------------------------------------
+    // =========================================================
     // CALIBRATION
-    // ---------------------------------------------------------
+    // =========================================================
 
     val status: CalibrationStatus =
         CalibrationStatus.STABILIZING,
 
-    // ---------------------------------------------------------
+    // =========================================================
     // ORIENTATION
-    // ---------------------------------------------------------
+    // =========================================================
 
-    val rollDeg: Float = 0f,
+    val rollDeg: Float =
+        0f,
 
-    val pitchDeg: Float = 0f,
+    val pitchDeg: Float =
+        0f,
 
-    val yawDeg: Float = 0f,
+    val yawDeg: Float =
+        0f,
 
-    val headingOffsetDeg: Float = 0f,
+    val headingOffsetDeg: Float =
+        0f,
 
     val currentQuaternion: Quat =
         Quat.IDENTITY,
 
-    // ---------------------------------------------------------
+    // =========================================================
     // SENSOR AVAILABILITY
-    // ---------------------------------------------------------
+    // =========================================================
 
     val sensorsAvailable: Boolean =
-        true,
+        false,
 
-    // ---------------------------------------------------------
-    // SENSOR ADAPTER
-    // ---------------------------------------------------------
+    val gravityAvailable: Boolean =
+        false,
+
+    val accelerationAvailable: Boolean =
+        false,
+
+    val gyroscopeAvailable: Boolean =
+        false,
+
+    val rotationVectorAvailable: Boolean =
+        false,
+
+    // =========================================================
+    // SENSOR ADAPTER TELEMETRY
+    // =========================================================
 
     val sampleCount: Int =
         0,
@@ -67,9 +83,41 @@ data class DvfcUiState(
     val maxGapMs: Double? =
         null,
 
-    // ---------------------------------------------------------
+    val duplicateTimestampCount: Int =
+        0,
+
+    val resamplingActive: Boolean =
+        false,
+
+    val resamplingRateHz: Double? =
+        null,
+
+    // =========================================================
+    // GRAVITY TELEMETRY
+    // =========================================================
+
+    val gravityMagnitude: Double? =
+        null,
+
+    val gravityStable: Boolean =
+        false,
+
+    val gravityLevelRollDeg: Double? =
+        null,
+
+    val gravityLevelPitchDeg: Double? =
+        null,
+
+    // =========================================================
+    // ACCELERATION TELEMETRY
+    // =========================================================
+
+    val linearAccelerationMagnitude: Double? =
+        null,
+
+    // =========================================================
     // STATIONARY
-    // ---------------------------------------------------------
+    // =========================================================
 
     val stationarySampleCount: Int =
         0,
@@ -77,9 +125,9 @@ data class DvfcUiState(
     val stationaryScore: Double? =
         null,
 
-    // ---------------------------------------------------------
+    // =========================================================
     // GYRO
-    // ---------------------------------------------------------
+    // =========================================================
 
     val gyroBiasX: Double? =
         null,
@@ -93,24 +141,18 @@ data class DvfcUiState(
     val gyroMagnitudeRms: Double? =
         null,
 
-    // ---------------------------------------------------------
+    // =========================================================
     // TRANSFORM
-    // ---------------------------------------------------------
+    // =========================================================
 
     val transformLocked: Boolean =
         false,
 
-    // ---------------------------------------------------------
-    // AVAILABLE SENSOR STREAMS
-    // ---------------------------------------------------------
+    // =========================================================
+    // FUTURE / NOT CONNECTED YET
+    // =========================================================
 
     val gnssAvailable: Boolean =
-        false,
-
-    val gravityAvailable: Boolean =
-        false,
-
-    val accelerationAvailable: Boolean =
         false,
 
     val automaticAzimuthAvailable: Boolean =
@@ -127,23 +169,29 @@ data class DvfcUiState(
  *
  * Responsibilities:
  *
- *  - run DVFC calibration state machine
- *  - maintain live orientation telemetry
- *  - monitor stationary stability
- *  - estimate stationary gyro bias
- *  - monitor sensor timestamp spacing
- *  - detect timestamp gaps
- *  - expose diagnostics to DVFCQualityActivity
+ * - Run DVFC calibration state machine
+ * - Maintain live orientation telemetry
+ * - Monitor stationary stability
+ * - Estimate stationary gyro bias
+ * - Monitor sensor timestamp spacing
+ * - Detect timestamp gaps
+ * - Expose diagnostics to DVFCQualityActivity
  *
- * It does NOT fabricate GNSS, acceleration or gravity data.
+ * Important:
+ *
+ * This controller does NOT fabricate GNSS, gravity,
+ * acceleration or automatic azimuth evidence.
+ *
+ * Those values remain unavailable until the corresponding
+ * sensor/measurement pipeline is actually connected.
  */
 class DVFCController(
     context: Context
 ) {
 
-    // ---------------------------------------------------------
+    // =========================================================
     // CORE DVFC COMPONENTS
-    // ---------------------------------------------------------
+    // =========================================================
 
     private val stability =
         StabilityDetector()
@@ -152,9 +200,9 @@ class DVFCController(
         DeviceVehicleTransform()
 
 
-    // ---------------------------------------------------------
+    // =========================================================
     // CALIBRATION STATE
-    // ---------------------------------------------------------
+    // =========================================================
 
     private var vehicleHeadingDeg =
         0f
@@ -163,9 +211,9 @@ class DVFCController(
         0L
 
 
-    // ---------------------------------------------------------
+    // =========================================================
     // TIMESTAMP DIAGNOSTICS
-    // ---------------------------------------------------------
+    // =========================================================
 
     private var previousTimestampNs =
         0L
@@ -186,18 +234,20 @@ class DVFCController(
         0
 
     /*
-     * Current expected cadence assumption.
+     * Current diagnostic reference cadence.
      *
-     * This is ONLY used for diagnostic gap detection.
-     * It does not force the sensor to actually run at 50 Hz.
+     * This does NOT force Android sensors to run at 50 Hz.
+     *
+     * It is only used for detecting unusually large
+     * timestamp gaps in the incoming sensor stream.
      */
     private val expectedPeriodMs =
         20.0
 
 
-    // ---------------------------------------------------------
+    // =========================================================
     // STATIONARY / GYRO DIAGNOSTICS
-    // ---------------------------------------------------------
+    // =========================================================
 
     private var stationarySampleCount =
         0
@@ -215,9 +265,9 @@ class DVFCController(
         0.0
 
 
-    // ---------------------------------------------------------
+    // =========================================================
     // STATE FLOW
-    // ---------------------------------------------------------
+    // =========================================================
 
     private val _state =
         MutableStateFlow(
@@ -228,17 +278,15 @@ class DVFCController(
         _state
 
 
-    // ---------------------------------------------------------
+    // =========================================================
     // SENSOR FUSION
-    // ---------------------------------------------------------
+    // =========================================================
 
     private val fusion =
         SensorFusion(context) { sample ->
 
             onSample(
-                q = sample.quaternion,
-                angularVelocity = sample.angularVelocity,
-                timestampNs = sample.timestampNs
+                sample = sample
             )
         }
 
@@ -252,9 +300,15 @@ class DVFCController(
         resetDiagnostics()
 
         _state.value =
-            _state.value.copy(
+            DvfcUiState(
                 sensorsAvailable =
-                    fusion.isAvailable
+                    fusion.isAvailable,
+
+                status =
+                    CalibrationStatus.STABILIZING,
+
+                transformLocked =
+                    transform.lockedTransform != null
             )
 
         fusion.start()
@@ -276,14 +330,29 @@ class DVFCController(
     // =========================================================
 
     private fun onSample(
-        q: Quat,
-        angularVelocity: FloatArray,
-        timestampNs: Long
+        sample: com.rishabh.astranav.dvfc.sensor.DeviceOrientationSample
     ) {
 
-        // -----------------------------------------------------
+        val q =
+            sample.quaternion
+
+        val angularVelocity =
+            sample.angularVelocity
+
+        val timestampNs =
+            sample.timestampNs
+
+        // ---------------------------------------------------------
+        // BASIC INPUT VALIDATION
+        // ---------------------------------------------------------
+
+        if (angularVelocity.size < 3) {
+            return
+        }
+
+        // ---------------------------------------------------------
         // ORIENTATION
-        // -----------------------------------------------------
+        // ---------------------------------------------------------
 
         val euler =
             q.toEulerDegrees()
@@ -294,19 +363,26 @@ class DVFCController(
                 vehicleHeadingDeg
             )
 
+        // ---------------------------------------------------------
+        // IMPORTANT:
+        //
+        // SensorAdapter already calculates:
+        //
+        // - sample rate
+        // - timestamp jitter
+        // - data gaps
+        // - duplicate timestamps
+        // - resampling
+        // - gravity stability
+        // - gravity leveling
+        //
+        // Therefore DVFCController must NOT recalculate
+        // those values using its own 20 ms / 50 Hz assumption.
+        // ---------------------------------------------------------
 
-        // -----------------------------------------------------
-        // TIMESTAMP DIAGNOSTICS
-        // -----------------------------------------------------
-
-        updateTimestampDiagnostics(
-            timestampNs
-        )
-
-
-        // -----------------------------------------------------
+        // ---------------------------------------------------------
         // GYRO VALUES
-        // -----------------------------------------------------
+        // ---------------------------------------------------------
 
         val gyroX =
             angularVelocity
@@ -326,7 +402,6 @@ class DVFCController(
                 ?.toDouble()
                 ?: 0.0
 
-
         val gyroMagnitude =
             sqrt(
                 gyroX * gyroX +
@@ -334,20 +409,18 @@ class DVFCController(
                         gyroZ * gyroZ
             )
 
-
-        // -----------------------------------------------------
+        // ---------------------------------------------------------
         // STABILITY
-        // -----------------------------------------------------
+        // ---------------------------------------------------------
 
         val stable =
             stability.update(
                 angularVelocity
             )
 
-
-        // -----------------------------------------------------
+        // ---------------------------------------------------------
         // STATIONARY GYRO COLLECTION
-        // -----------------------------------------------------
+        // ---------------------------------------------------------
 
         if (stable) {
 
@@ -363,17 +436,16 @@ class DVFCController(
                 gyroZ
 
             gyroMagnitudeSquaredSum +=
-                gyroMagnitude * gyroMagnitude
+                gyroMagnitude *
+                        gyroMagnitude
         }
-
 
         val current =
             _state.value
 
-
-        // =====================================================
+        // =========================================================
         // CALIBRATION STATE MACHINE
-        // =====================================================
+        // =========================================================
 
         val nextStatus =
             when (current.status) {
@@ -394,7 +466,6 @@ class DVFCController(
                     }
                 }
 
-
                 // -------------------------------------------------
                 // ALIGNING
                 // -------------------------------------------------
@@ -402,15 +473,22 @@ class DVFCController(
                 CalibrationStatus.ALIGNING -> {
 
                     /*
-                     * Current implementation uses the fused
-                     * device heading as the provisional vehicle
+                     * CURRENT IMPLEMENTATION:
+                     *
+                     * Device yaw is used as the provisional vehicle
                      * heading.
                      *
-                     * GNSS COG refinement will be connected later.
+                     * This is NOT GNSS COG refinement.
+                     *
+                     * Automatic mount azimuth refinement remains
+                     * unavailable until the GNSS-motion pipeline
+                     * is connected.
                      */
 
                     vehicleHeadingDeg =
-                        euler[2]
+                        euler.getOrElse(2) {
+                            0f
+                        }
 
                     transform.calibrate(
                         q,
@@ -422,7 +500,6 @@ class DVFCController(
 
                     CalibrationStatus.VALIDATING
                 }
-
 
                 // -------------------------------------------------
                 // VALIDATING
@@ -437,8 +514,7 @@ class DVFCController(
                         (
                                 timestampNs -
                                         validatingSinceNs
-                                ) / 1_000_000
-
+                                ) / 1_000_000L
 
                     when {
 
@@ -451,13 +527,11 @@ class DVFCController(
                             CalibrationStatus.STABILIZING
                         }
 
-
-                        elapsedMs >
+                        elapsedMs >=
                                 VALIDATION_HOLD_MS -> {
 
                             CalibrationStatus.COMPLETE
                         }
-
 
                         else -> {
 
@@ -465,7 +539,6 @@ class DVFCController(
                         }
                     }
                 }
-
 
                 // -------------------------------------------------
                 // COMPLETE
@@ -477,33 +550,38 @@ class DVFCController(
                 }
             }
 
-
-        // =====================================================
+        // =========================================================
         // UPDATE LIVE STATE
-        // =====================================================
+        // =========================================================
 
         _state.value =
             current.copy(
 
-                // -----------------------------
-                // Calibration
-                // -----------------------------
+                // -------------------------------------------------
+                // CALIBRATION
+                // -------------------------------------------------
 
                 status =
                     nextStatus,
 
-                // -----------------------------
-                // Orientation
-                // -----------------------------
+                // -------------------------------------------------
+                // ORIENTATION
+                // -------------------------------------------------
 
                 rollDeg =
-                    euler[0],
+                    euler.getOrElse(0) {
+                        0f
+                    },
 
                 pitchDeg =
-                    euler[1],
+                    euler.getOrElse(1) {
+                        0f
+                    },
 
                 yawDeg =
-                    euler[2],
+                    euler.getOrElse(2) {
+                        0f
+                    },
 
                 headingOffsetDeg =
                     headingOffset,
@@ -511,38 +589,150 @@ class DVFCController(
                 currentQuaternion =
                     q,
 
-                // -----------------------------
-                // Sensor availability
-                // -----------------------------
+                // -------------------------------------------------
+                // SENSOR AVAILABILITY
+                // -------------------------------------------------
 
                 sensorsAvailable =
                     fusion.isAvailable,
 
-                // -----------------------------
-                // Timestamp diagnostics
-                // -----------------------------
+                gravityAvailable =
+                    sample.gravityAvailable,
+
+                accelerationAvailable =
+                    sample.accelerationAvailable,
+
+                gyroscopeAvailable =
+                    sample.gyroscopeAvailable,
+
+                rotationVectorAvailable =
+                    sample.rotationVectorAvailable,
+
+                // -------------------------------------------------
+                // SENSOR ADAPTER TELEMETRY
+                // -------------------------------------------------
+
+                /*
+                 * IMPORTANT:
+                 *
+                 * These values come directly from SensorAdapter.
+                 *
+                 * Do NOT use timestampSampleCount,
+                 * timestampGapCount etc. here.
+                 */
 
                 sampleCount =
-                    timestampSampleCount,
+                    current.sampleCount + 1,
 
                 timestampJitterMs =
-                    timestampJitterMs(),
+                    sample.timestampJitterMs
+                        .toDouble(),
 
                 averageSamplePeriodMs =
-                    averageTimestampPeriodMs(),
+                    if (
+                        sample.estimatedSampleHz > 0f
+                    ) {
+                        1000.0 /
+                                sample.estimatedSampleHz
+                    } else {
+                        null
+                    },
 
                 estimatedSampleHz =
-                    estimatedSampleHz(),
+                    sample.estimatedSampleHz
+                        .toDouble(),
 
                 dataGapCount =
-                    timestampGapCount,
+                    sample.dataGapCount,
 
                 maxGapMs =
-                    timestampMaxGapMs(),
+                    sample.maxGapMs
+                        .toDouble(),
 
-                // -----------------------------
-                // Stationary diagnostics
-                // -----------------------------
+                duplicateTimestampCount =
+                    sample.duplicateTimestampCount,
+
+                resamplingActive =
+                    sample.resamplingActive,
+
+                resamplingRateHz =
+                    if (
+                        sample.resamplingRateHz > 0f
+                    ) {
+                        sample.resamplingRateHz
+                            .toDouble()
+                    } else {
+                        null
+                    },
+
+                // -------------------------------------------------
+                // GRAVITY
+                // -------------------------------------------------
+
+                gravityMagnitude =
+                    sample.gravityMagnitude
+                        .toDouble(),
+
+                gravityStable =
+                    sample.gravityStable,
+
+                gravityLevelRollDeg =
+                    sample.gravityLevelRollDeg
+                        .toDouble(),
+
+                gravityLevelPitchDeg =
+                    sample.gravityLevelPitchDeg
+                        .toDouble(),
+
+                // -------------------------------------------------
+                // LINEAR ACCELERATION
+                // -------------------------------------------------
+
+                linearAccelerationMagnitude =
+                    sqrt(
+                        (
+                                sample.linearAcceleration
+                                    .getOrNull(0)
+                                    ?.toDouble()
+                                    ?: 0.0
+                                ) *
+                                (
+                                        sample.linearAcceleration
+                                            .getOrNull(0)
+                                            ?.toDouble()
+                                            ?: 0.0
+                                        ) +
+
+                                (
+                                        sample.linearAcceleration
+                                            .getOrNull(1)
+                                            ?.toDouble()
+                                            ?: 0.0
+                                        ) *
+                                (
+                                        sample.linearAcceleration
+                                            .getOrNull(1)
+                                            ?.toDouble()
+                                            ?: 0.0
+                                        ) +
+
+                                (
+                                        sample.linearAcceleration
+                                            .getOrNull(2)
+                                            ?.toDouble()
+                                            ?: 0.0
+                                        ) *
+                                (
+                                        sample.linearAcceleration
+                                            .getOrNull(2)
+                                            ?.toDouble()
+                                            ?: 0.0
+                                        )
+                    ),
+
+                // -------------------------------------------------
+                // STATIONARY
+                // -------------------------------------------------
 
                 stationarySampleCount =
                     stationarySampleCount,
@@ -550,9 +740,9 @@ class DVFCController(
                 stationaryScore =
                     stationaryScore(),
 
-                // -----------------------------
-                // Gyro diagnostics
-                // -----------------------------
+                // -------------------------------------------------
+                // GYRO
+                // -------------------------------------------------
 
                 gyroBiasX =
                     gyroBiasX(),
@@ -566,24 +756,23 @@ class DVFCController(
                 gyroMagnitudeRms =
                     gyroMagnitudeRms(),
 
-                // -----------------------------
-                // Transform
-                // -----------------------------
+                // -------------------------------------------------
+                // TRANSFORM
+                // -------------------------------------------------
 
                 transformLocked =
                     transform.lockedTransform != null,
 
-                // -----------------------------
-                // Streams not exposed yet
-                // -----------------------------
+                // -------------------------------------------------
+                // NOT CONNECTED YET
+                // -------------------------------------------------
+
+                /*
+                 * These remain false until real GNSS and automatic
+                 * azimuth pipelines are connected.
+                 */
 
                 gnssAvailable =
-                    false,
-
-                gravityAvailable =
-                    false,
-
-                accelerationAvailable =
                     false,
 
                 automaticAzimuthAvailable =
@@ -600,8 +789,9 @@ class DVFCController(
         timestampNs: Long
     ) {
 
-        // First sample establishes reference timestamp.
-
+        /*
+         * First sample establishes the reference timestamp.
+         */
         if (
             previousTimestampNs == 0L
         ) {
@@ -624,8 +814,9 @@ class DVFCController(
             timestampNs
 
 
-        // Invalid timestamp interval.
-
+        /*
+         * Ignore invalid or backwards timestamps.
+         */
         if (
             dtMs <= 0.0
         ) {
@@ -661,7 +852,6 @@ class DVFCController(
          * expected = 20 ms
          * gap      > 60 ms
          */
-
         if (
             dtMs >
             expectedPeriodMs * 3.0
@@ -693,13 +883,11 @@ class DVFCController(
             averageTimestampPeriodMs()
                 ?: return null
 
-
         if (
             period <= 0.0
         ) {
             return null
         }
-
 
         return 1000.0 /
                 period
@@ -730,8 +918,7 @@ class DVFCController(
             (
                     meanSquare -
                             mean * mean
-                    )
-                .coerceAtLeast(
+                    ).coerceAtLeast(
                     0.0
                 )
 
@@ -838,7 +1025,6 @@ class DVFCController(
             return null
         }
 
-
         return sqrt(
             gyroMagnitudeSquaredSum /
                     stationarySampleCount
@@ -926,7 +1112,6 @@ class DVFCController(
             0L
 
         resetDiagnostics()
-
 
         _state.value =
             _state.value.copy(

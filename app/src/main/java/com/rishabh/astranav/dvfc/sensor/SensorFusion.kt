@@ -3,13 +3,8 @@ package com.rishabh.astranav.dvfc.sensor
 import android.content.Context
 import com.rishabh.astranav.dvfc.math.Quat
 
-/**
- * Backward-compatible orientation interface for DVFC.
- *
- * The actual raw sensor processing is now performed by
- * SensorAdapter.
- */
 data class DeviceOrientationSample(
+
     val quaternion: Quat,
 
     val angularVelocity: FloatArray,
@@ -19,103 +14,175 @@ data class DeviceOrientationSample(
     val accuracy: Int,
 
     // ---------------------------------------------------------
-    // SENSOR ADAPTER DATA
+    // SENSOR ADAPTER
     // ---------------------------------------------------------
 
-    val acceleration: FloatArray = FloatArray(3),
+    val acceleration: FloatArray =
+        FloatArray(3),
 
-    val gravity: FloatArray = FloatArray(3),
+    val gravity: FloatArray =
+        FloatArray(3),
 
-    val estimatedSampleHz: Float = 0f,
+    val linearAcceleration: FloatArray =
+        FloatArray(3),
 
-    val timestampJitterMs: Float = 0f,
+    // ---------------------------------------------------------
+    // GRAVITY
+    // ---------------------------------------------------------
 
-    val dataGapCount: Int = 0,
+    val gravityMagnitude: Float =
+        0f,
 
-    val maxGapMs: Float = 0f,
+    val gravityStable: Boolean =
+        false,
 
-    val gravityMagnitude: Float = 0f,
+    val gravityLevelRollDeg: Float =
+        0f,
 
-    val gravityStable: Boolean = false,
+    val gravityLevelPitchDeg: Float =
+        0f,
 
-    val accelerationAvailable: Boolean = false,
+    // ---------------------------------------------------------
+    // TIMESTAMP / RATE
+    // ---------------------------------------------------------
 
-    val gyroscopeAvailable: Boolean = false,
+    val estimatedSampleHz: Float =
+        0f,
 
-    val gravityAvailable: Boolean = false,
+    val timestampJitterMs: Float =
+        0f,
 
-    val rotationVectorAvailable: Boolean = false,
+    val dataGapCount: Int =
+        0,
+
+    val maxGapMs: Float =
+        0f,
+
+    val duplicateTimestampCount: Int =
+        0,
+
+    // ---------------------------------------------------------
+    // RESAMPLING
+    // ---------------------------------------------------------
+
+    val resamplingActive: Boolean =
+        false,
+
+    val resamplingRateHz: Float =
+        0f,
+
+    // ---------------------------------------------------------
+    // AVAILABILITY
+    // ---------------------------------------------------------
+
+    val accelerationAvailable: Boolean =
+        false,
+
+    val gyroscopeAvailable: Boolean =
+        false,
+
+    val gravityAvailable: Boolean =
+        false,
+
+    val rotationVectorAvailable: Boolean =
+        false
 )
 
 /**
  * Compatibility facade.
  *
- * DVFCController can continue using SensorFusion while the
- * implementation underneath has been upgraded to SensorAdapter.
+ * Raw Android sensors are handled exclusively by
+ * SensorAdapter.
  */
 class SensorFusion(
     context: Context,
-    private val onSample: (DeviceOrientationSample) -> Unit,
+    private val onSample:
+        (DeviceOrientationSample) -> Unit
 ) {
 
-    private val adapter = SensorAdapter(context) { sample ->
+    private val adapter =
+        SensorAdapter(context) { sample ->
 
-        onSample(
-            DeviceOrientationSample(
+            onSample(
 
-                quaternion =
-                    sample.quaternion,
+                DeviceOrientationSample(
 
-                angularVelocity =
-                    sample.angularVelocity.copyOf(),
+                    quaternion =
+                        sample.quaternion,
 
-                timestampNs =
-                    sample.timestampNs,
+                    angularVelocity =
+                        sample.angularVelocity
+                            .copyOf(),
 
-                accuracy =
-                    sample.rotationAccuracy,
+                    timestampNs =
+                        sample.timestampNs,
 
-                acceleration =
-                    sample.acceleration.copyOf(),
+                    accuracy =
+                        sample.rotationAccuracy,
 
-                gravity =
-                    sample.gravity.copyOf(),
+                    acceleration =
+                        sample.acceleration
+                            .copyOf(),
 
-                estimatedSampleHz =
-                    sample.estimatedSampleHz,
+                    gravity =
+                        sample.gravity
+                            .copyOf(),
 
-                timestampJitterMs =
-                    sample.timestampJitterMs,
+                    linearAcceleration =
+                        sample.linearAcceleration
+                            .copyOf(),
 
-                dataGapCount =
-                    sample.dataGapCount,
+                    gravityMagnitude =
+                        sample.gravityMagnitude,
 
-                maxGapMs =
-                    sample.maxGapMs,
+                    gravityStable =
+                        sample.gravityStable,
 
-                gravityMagnitude =
-                    sample.gravityMagnitude,
+                    gravityLevelRollDeg =
+                        sample.gravityLevelRollDeg,
 
-                gravityStable =
-                    sample.gravityStable,
+                    gravityLevelPitchDeg =
+                        sample.gravityLevelPitchDeg,
 
-                accelerationAvailable =
-                    sample.accelerationAvailable,
+                    estimatedSampleHz =
+                        sample.estimatedSampleHz,
 
-                gyroscopeAvailable =
-                    sample.gyroscopeAvailable,
+                    timestampJitterMs =
+                        sample.timestampJitterMs,
 
-                gravityAvailable =
-                    sample.gravityAvailable,
+                    dataGapCount =
+                        sample.dataGapCount,
 
-                rotationVectorAvailable =
-                    sample.rotationVectorAvailable,
-            ),
-        )
-    }
+                    maxGapMs =
+                        sample.maxGapMs,
+
+                    duplicateTimestampCount =
+                        sample.duplicateTimestampCount,
+
+                    resamplingActive =
+                        sample.resamplingActive,
+
+                    resamplingRateHz =
+                        sample.resamplingRateHz,
+
+                    accelerationAvailable =
+                        sample.accelerationAvailable,
+
+                    gyroscopeAvailable =
+                        sample.gyroscopeAvailable,
+
+                    gravityAvailable =
+                        sample.gravityAvailable,
+
+                    rotationVectorAvailable =
+                        sample.rotationVectorAvailable
+                )
+            )
+        }
 
     val isAvailable: Boolean
-        get() = adapter.isAvailable
+        get() =
+            adapter.isAvailable
 
     fun start() {
         adapter.start()

@@ -2,67 +2,56 @@ package com.rishabh.astranav.dvfc.sensor
 
 import com.rishabh.astranav.dvfc.math.Quat
 
-/**
- * One synchronized, validated sensor sample produced by SensorAdapter.
- *
- * All values are already normalized into the units expected by the
- * downstream DVFC / ESKF pipeline.
- */
 data class DeviceSensorSample(
-
-    // ---------------------------------------------------------
-    // TIMESTAMP
-    // ---------------------------------------------------------
-
     val timestampNs: Long,
 
-    // ---------------------------------------------------------
-    // IMU
-    // ---------------------------------------------------------
-
-    /** Linear acceleration in PHONE frame, m/s². */
+    // Raw/normalized IMU
     val acceleration: FloatArray,
-
-    /** Angular velocity in PHONE frame, rad/s. */
     val angularVelocity: FloatArray,
-
-    /** Gravity vector in PHONE frame, m/s². */
     val gravity: FloatArray,
 
-    // ---------------------------------------------------------
-    // ORIENTATION
-    // ---------------------------------------------------------
+    // Gravity-compensated acceleration
+    val linearAcceleration: FloatArray,
 
-    /** Rotation-vector orientation converted to quaternion. */
+    // Orientation
     val quaternion: Quat,
 
-    // ---------------------------------------------------------
-    // SENSOR STATUS
-    // ---------------------------------------------------------
+    // Gravity diagnostics
+    val gravityMagnitude: Float,
+    val gravityStable: Boolean,
+    val gravityLevelRollDeg: Float,
+    val gravityLevelPitchDeg: Float,
+
+    // Adapter diagnostics
+    val estimatedSampleHz: Float,
+    val timestampJitterMs: Float,
+    val dataGapCount: Int,
+    val maxGapMs: Float,
+    val duplicateTimestampCount: Int,
+
+    // Processing state
+    val resamplingActive: Boolean,
+    val resamplingRateHz: Float,
+
+    // Sensor availability
+    val accelerationAvailable: Boolean,
+    val gyroscopeAvailable: Boolean,
+    val gravityAvailable: Boolean,
+    val rotationVectorAvailable: Boolean,
 
     val rotationAccuracy: Int,
 
-    val accelerationAvailable: Boolean,
 
-    val gyroscopeAvailable: Boolean,
 
-    val gravityAvailable: Boolean,
 
-    val rotationVectorAvailable: Boolean,
+    val adapterResamplingActive: Boolean = false,
+    val adapterResamplingRateHz: Float = 0f,
 
-    // ---------------------------------------------------------
-    // ADAPTER DIAGNOSTICS
-    // ---------------------------------------------------------
+    val adapterEstimatedSampleHz: Float = 0f,
+    val adapterTimestampJitterMs: Float = 0f,
+    val adapterDataGapCount: Int = 0,
+    val adapterMaxGapMs: Float = 0f,
+    val adapterDuplicateTimestampCount: Int = 0,
 
-    val estimatedSampleHz: Float,
 
-    val timestampJitterMs: Float,
-
-    val dataGapCount: Int,
-
-    val maxGapMs: Float,
-
-    val gravityMagnitude: Float,
-
-    val gravityStable: Boolean,
 )
