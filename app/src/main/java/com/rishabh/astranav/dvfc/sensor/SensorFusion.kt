@@ -1,73 +1,127 @@
 package com.rishabh.astranav.dvfc.sensor
 
 import android.content.Context
-import android.hardware.Sensor
-import android.hardware.SensorEvent
-import android.hardware.SensorEventListener
-import android.hardware.SensorManager
 import com.rishabh.astranav.dvfc.math.Quat
 
+/**
+ * Backward-compatible orientation interface for DVFC.
+ *
+ * The actual raw sensor processing is now performed by
+ * SensorAdapter.
+ */
 data class DeviceOrientationSample(
-    val quaternion: Quat,            // device orientation relative to Earth (ENU) frame
-    val angularVelocity: FloatArray, // rad/s, most recent gyroscope sample — used for stability detection
+    val quaternion: Quat,
+
+    val angularVelocity: FloatArray,
+
     val timestampNs: Long,
+
     val accuracy: Int,
+
+    // ---------------------------------------------------------
+    // SENSOR ADAPTER DATA
+    // ---------------------------------------------------------
+
+    val acceleration: FloatArray = FloatArray(3),
+
+    val gravity: FloatArray = FloatArray(3),
+
+    val estimatedSampleHz: Float = 0f,
+
+    val timestampJitterMs: Float = 0f,
+
+    val dataGapCount: Int = 0,
+
+    val maxGapMs: Float = 0f,
+
+    val gravityMagnitude: Float = 0f,
+
+    val gravityStable: Boolean = false,
+
+    val accelerationAvailable: Boolean = false,
+
+    val gyroscopeAvailable: Boolean = false,
+
+    val gravityAvailable: Boolean = false,
+
+    val rotationVectorAvailable: Boolean = false,
 )
 
 /**
- * Wraps Android's built-in sensor fusion (TYPE_ROTATION_VECTOR — a fused
- * accelerometer + gyroscope + magnetometer estimate) to produce a device
- * orientation quaternion in the Earth (East-North-Up) frame, per spec §3.
+ * Compatibility facade.
  *
- * TYPE_ROTATION_VECTOR (not GAME_ROTATION_VECTOR) is used deliberately:
- * DVFC needs an absolute heading reference to relate device yaw to a real
- * bearing at all — even though, per spec §5, that heading is not trusted as
- * perfect ground truth on its own (see DeviceVehicleTransform's docs on
- * preferring GNSS course-over-ground where available).
+ * DVFCController can continue using SensorFusion while the
+ * implementation underneath has been upgraded to SensorAdapter.
  */
 class SensorFusion(
     context: Context,
     private val onSample: (DeviceOrientationSample) -> Unit,
-) : SensorEventListener {
+) {
 
-    private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
-    private val rotationSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
-    private val gyroSensor = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
+    private val adapter = SensorAdapter(context) { sample ->
 
-    private var lastGyro = FloatArray(3)
+        onSample(
+            DeviceOrientationSample(
 
-    val isAvailable: Boolean get() = rotationSensor != null
+                quaternion =
+                    sample.quaternion,
+
+                angularVelocity =
+                    sample.angularVelocity.copyOf(),
+
+                timestampNs =
+                    sample.timestampNs,
+
+                accuracy =
+                    sample.rotationAccuracy,
+
+                acceleration =
+                    sample.acceleration.copyOf(),
+
+                gravity =
+                    sample.gravity.copyOf(),
+
+                estimatedSampleHz =
+                    sample.estimatedSampleHz,
+
+                timestampJitterMs =
+                    sample.timestampJitterMs,
+
+                dataGapCount =
+                    sample.dataGapCount,
+
+                maxGapMs =
+                    sample.maxGapMs,
+
+                gravityMagnitude =
+                    sample.gravityMagnitude,
+
+                gravityStable =
+                    sample.gravityStable,
+
+                accelerationAvailable =
+                    sample.accelerationAvailable,
+
+                gyroscopeAvailable =
+                    sample.gyroscopeAvailable,
+
+                gravityAvailable =
+                    sample.gravityAvailable,
+
+                rotationVectorAvailable =
+                    sample.rotationVectorAvailable,
+            ),
+        )
+    }
+
+    val isAvailable: Boolean
+        get() = adapter.isAvailable
 
     fun start() {
-        rotationSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
-        gyroSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
+        adapter.start()
     }
 
     fun stop() {
-        sensorManager.unregisterListener(this)
+        adapter.stop()
     }
-
-    override fun onSensorChanged(event: SensorEvent) {
-        when (event.sensor.type) {
-            Sensor.TYPE_GYROSCOPE -> {
-                lastGyro = event.values.copyOf()
-            }
-            Sensor.TYPE_ROTATION_VECTOR -> {
-                val q = FloatArray(4)
-                // Android returns Q = [w, x, y, z].
-                SensorManager.getQuaternionFromVector(q, event.values)
-                val quat = Quat(x = q[1], y = q[2], z = q[3], w = q[0]).normalized()
-                onSample(
-                    DeviceOrientationSample(
-                        quaternion = quat,
-                        angularVelocity = lastGyro,
-                        timestampNs = event.timestamp,
-                        accuracy = event.accuracy,
-                    ),
-                )
-            }
-        }
-    }
-
-    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
 }
