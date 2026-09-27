@@ -63,6 +63,22 @@
             android:name=".SensorCheckActivity"
             android:exported="false"
             android:theme="@style/Theme.ASTRANAV.SensorCheck" />
+
+        <activity
+            android:name=".DVFCActivity"
+            android:exported="true"
+            android:theme="@style/Theme.AppCompat.DayNight.NoActionBar">
+            <!-- Remove/adjust once wired into your real launch flow. -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".mountingchange.MountingChangeActivity"
+            android:exported="false"
+            android:theme="@style/Theme.AppCompat.DayNight.NoActionBar" />
     </application>
 
 </manifest>

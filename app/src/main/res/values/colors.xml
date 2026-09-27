@@ -72,6 +72,15 @@
 
 
 
+    <!-- Same ASTRA NAV dark-aerospace tokens as the sensor-check module, so this
+            merges cleanly if you're dropping it into that same app/module. -->
+    <color name="warn_border_45">#73F5B942</color>
+    <color name="warn_bg_10">#1AF5B942</color>
+
+    <color name="good_border_40">#6637E6A0</color>
+    <color name="good_bg_10">#1A37E6A0</color>
+    <color name="good_bg_15">#2637E6A0</color>
+
 
 
 

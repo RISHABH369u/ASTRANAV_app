@@ -220,4 +220,10 @@ dependencies {
     androidTestImplementation(
         "androidx.test.espresso:espresso-core:3.7.0"
     )
+
+
+    implementation("io.github.sceneview:sceneview:2.2.1")
+    implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 }

@@ -1,6 +1,7 @@
 package com.rishabh.astranav
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -230,7 +231,7 @@ class SensorCheckActivity : AppCompatActivity() {
     private fun onContinue() {
         android.util.Log.d(TAG, "Sensor check complete → opening alignment")
         // TODO: navigate to the alignment screen, e.g.:
-        // startActivity(Intent(this, AlignmentActivity::class.java))
+         startActivity(Intent(this, DVFCActivity::class.java))
     }
 
     private fun onDiagnostics() {
