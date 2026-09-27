@@ -2,8 +2,8 @@ package com.rishabh.astranav
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.View
 import android.widget.Button
-import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.rishabh.astranav.dvfcquality.AdapterEvidence
@@ -16,6 +16,7 @@ import com.rishabh.astranav.dvfcquality.ExcitationEvidence
 import com.rishabh.astranav.dvfcquality.GnssEvidence
 import com.rishabh.astranav.dvfcquality.StabilityEvidence
 import com.rishabh.astranav.dvfcquality.TransformEvidence
+import com.rishabh.astranav.ui.view.CircularGaugeView
 
 import java.util.Locale
 
@@ -92,7 +93,9 @@ class DVFCQualityActivity : AppCompatActivity() {
 
     private lateinit var score: TextView
     private lateinit var status: TextView
-    private lateinit var progress: ProgressBar
+    private lateinit var hint: TextView
+    private lateinit var gauge: CircularGaugeView
+
     private var transformValid = false
     private var calibrationComplete = false
 
@@ -121,12 +124,6 @@ class DVFCQualityActivity : AppCompatActivity() {
     private var autoAzimuthAvailable = false
 
 
-
-
-
-
-
-
     override fun onCreate(
         savedInstanceState: Bundle?
     ) {
@@ -135,8 +132,6 @@ class DVFCQualityActivity : AppCompatActivity() {
         setContentView(
             R.layout.activity_dvfcquality
         )
-
-
 
 
         transformValid =
@@ -272,8 +267,11 @@ class DVFCQualityActivity : AppCompatActivity() {
         status =
             findViewById(R.id.dvfcQualityStatus)
 
-        progress =
-            findViewById(R.id.dvfcQualityProgress)
+        hint =
+            findViewById(R.id.dvfcQualityHint)
+
+        gauge =
+            findViewById(R.id.dvfcQualityGauge)
 
         findViewById<Button>(
             R.id.actionUseCalibration
@@ -301,16 +299,12 @@ class DVFCQualityActivity : AppCompatActivity() {
                 status.text =
                     result.hardGateFailure
                         ?: "VALIDATION REQUIRED"
+
+                status.setBackgroundResource(
+                    R.drawable.bg_dvfc_status_chip_crit
+                )
             }
         }
-
-        transformValid =
-            intent.getBooleanExtra(
-                EXTRA_TRANSFORM_VALID,
-                false
-            )
-
-
 
         findViewById<Button>(
             R.id.actionRecalibrate
@@ -690,11 +684,11 @@ class DVFCQualityActivity : AppCompatActivity() {
                 input
             )
 
+        val waiting =
+            result.status == "WAITING FOR TELEMETRY"
+
         score.text =
-            if (
-                result.status ==
-                "WAITING FOR TELEMETRY"
-            ) {
+            if (waiting) {
                 "—"
             } else {
                 result.score.toString()
@@ -704,8 +698,37 @@ class DVFCQualityActivity : AppCompatActivity() {
             result.hardGateFailure
                 ?: result.status
 
-        progress.progress =
-            result.score
+        hint.text =
+            statusHint(
+                result.status,
+                result.hardGateFailure
+            )
+
+        val (chipDrawable, gaugeColor) =
+            when {
+
+                result.hardGateFailure != null ->
+                    R.drawable.bg_dvfc_status_chip_crit to R.color.crit
+
+                waiting ->
+                    R.drawable.bg_dvfc_status_chip_waiting to R.color.idle
+
+                result.status == "READY" ->
+                    R.drawable.bg_dvfc_status_chip_pass to R.color.good
+
+                result.status == "DEGRADED" ->
+                    R.drawable.bg_dvfc_status_chip_warn to R.color.warn
+
+                else ->
+                    R.drawable.bg_dvfc_status_chip_crit to R.color.crit
+            }
+
+        status.setBackgroundResource(chipDrawable)
+
+        gauge.setProgress(
+            value = if (waiting) 0 else result.score,
+            colorRes = gaugeColor
+        )
 
         bindState(
             R.id.adapterTimeSync,
@@ -730,6 +753,17 @@ class DVFCQualityActivity : AppCompatActivity() {
         bindState(
             R.id.adapterGravity,
             input.adapter.gravity
+        )
+
+        bindSectionDot(
+            R.id.sectionDotAdapter,
+            listOf(
+                input.adapter.timestampSync,
+                input.adapter.units,
+                input.adapter.dataGaps,
+                input.adapter.resampling,
+                input.adapter.gravity
+            )
         )
 
         bindState(
@@ -760,6 +794,18 @@ class DVFCQualityActivity : AppCompatActivity() {
         bindState(
             R.id.scoreMount,
             input.calibration.mountStability
+        )
+
+        bindSectionDot(
+            R.id.sectionDotCalibration,
+            listOf(
+                input.calibration.manualAlignment,
+                input.calibration.gravityLeveling,
+                input.calibration.gyroBias,
+                input.calibration.mountAzimuth,
+                input.calibration.automaticRefinement,
+                input.calibration.mountStability
+            )
         )
 
         findViewById<TextView>(
@@ -885,22 +931,34 @@ class DVFCQualityActivity : AppCompatActivity() {
                 }
                 ?: "—"
 
-        findViewById<TextView>(
-            R.id.mountStatus
-        ).text =
-            when (
-                input.stability.mountChanged
-            ) {
+        val mountBanner =
+            findViewById<View>(R.id.mountBanner)
 
-                true ->
-                    "CHANGE CONFIRMED"
+        val mountStatusView =
+            findViewById<TextView>(R.id.mountStatus)
 
-                false ->
-                    "STABLE"
+        when (
+            input.stability.mountChanged
+        ) {
 
-                null ->
-                    "WAITING"
+            true -> {
+                mountStatusView.text = "CHANGE CONFIRMED"
+                mountStatusView.setTextColor(getColor(R.color.crit))
+                mountBanner.setBackgroundResource(R.drawable.bg_dvfc_mount_banner_changed)
             }
+
+            false -> {
+                mountStatusView.text = "STABLE"
+                mountStatusView.setTextColor(getColor(R.color.good))
+                mountBanner.setBackgroundResource(R.drawable.bg_dvfc_mount_banner_stable)
+            }
+
+            null -> {
+                mountStatusView.text = "WAITING"
+                mountStatusView.setTextColor(getColor(R.color.fg_faint))
+                mountBanner.setBackgroundResource(R.drawable.bg_dvfc_mount_banner_waiting)
+            }
+        }
 
         findViewById<TextView>(
             R.id.finalYaw
@@ -954,6 +1012,31 @@ class DVFCQualityActivity : AppCompatActivity() {
                     result.status == "DEGRADED"
     }
 
+    private fun statusHint(
+        statusText: String,
+        hardGateFailure: String?
+    ): String {
+
+        if (hardGateFailure != null) {
+            return hardGateFailure
+        }
+
+        return when (statusText) {
+
+            "READY" ->
+                "Meets the navigation launch threshold. Safe to use this calibration."
+
+            "DEGRADED" ->
+                "Usable, but some evidence is below target. Consider recalibrating soon."
+
+            "INVALID" ->
+                "Below the minimum quality bar. Recalibration is required."
+
+            else ->
+                "Collecting evidence from the sensor adapter and calibration pipeline."
+        }
+    }
+
     private fun bindState(
         id: Int,
         state: EvidenceState
@@ -978,24 +1061,68 @@ class DVFCQualityActivity : AppCompatActivity() {
                     "WAITING"
             }
 
-        view.setTextColor(
-            getColor(
-                when (state) {
+        val (chipDrawable, textColor) =
+            when (state) {
 
-                    EvidenceState.PASS ->
-                        R.color.good
+                EvidenceState.PASS ->
+                    R.drawable.bg_dvfc_status_chip_pass to R.color.good
 
-                    EvidenceState.WARN ->
-                        R.color.warn
+                EvidenceState.WARN ->
+                    R.drawable.bg_dvfc_status_chip_warn to R.color.warn
 
-                    EvidenceState.FAIL ->
-                        R.color.crit
+                EvidenceState.FAIL ->
+                    R.drawable.bg_dvfc_status_chip_crit to R.color.crit
 
-                    EvidenceState.WAITING ->
-                        R.color.fg_faint
-                }
-            )
-        )
+                EvidenceState.WAITING ->
+                    R.drawable.bg_dvfc_status_chip_waiting to R.color.fg_faint
+            }
+
+        view.setBackgroundResource(chipDrawable)
+        view.setTextColor(getColor(textColor))
+    }
+
+    /**
+     * Colors a section-header dot with the worst evidence state among its
+     * rows: any FAIL wins, else any WARN, else PASS only if every row has
+     * reported in, otherwise the section is still WAITING.
+     */
+    private fun bindSectionDot(
+        id: Int,
+        states: List<EvidenceState>
+    ) {
+
+        val worst = when {
+
+            states.any { it == EvidenceState.FAIL } ->
+                EvidenceState.FAIL
+
+            states.any { it == EvidenceState.WARN } ->
+                EvidenceState.WARN
+
+            states.all { it == EvidenceState.PASS } ->
+                EvidenceState.PASS
+
+            else ->
+                EvidenceState.WAITING
+        }
+
+        val dotDrawable = when (worst) {
+
+            EvidenceState.PASS ->
+                R.drawable.bg_dvfc_section_dot_pass
+
+            EvidenceState.WARN ->
+                R.drawable.bg_dvfc_section_dot_warn
+
+            EvidenceState.FAIL ->
+                R.drawable.bg_dvfc_section_dot_crit
+
+            EvidenceState.WAITING ->
+                R.drawable.bg_dvfc_section_dot_waiting
+        }
+
+        findViewById<View>(id)
+            .setBackgroundResource(dotDrawable)
     }
 
     private fun formatDeg(

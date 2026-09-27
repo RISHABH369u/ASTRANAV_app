@@ -51,13 +51,12 @@
     </style>
 
 
-    <style name="DvfcQualitySectionTitle">
+    <!-- Section title text only (no margins) — used inside DvfcSectionHeaderRow,
+         which owns the spacing so the status dot lines up with the text. -->
+    <style name="DvfcQualitySectionTitleText">
 
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
-
-        <item name="android:layout_marginTop">22dp</item>
-        <item name="android:layout_marginBottom">8dp</item>
 
         <item name="android:letterSpacing">0.12</item>
 
@@ -70,6 +69,44 @@
     </style>
 
 
+    <!-- Kept for compatibility with any usage outside the section-header row. -->
+    <style name="DvfcQualitySectionTitle" parent="DvfcQualitySectionTitleText">
+
+        <item name="android:layout_marginTop">22dp</item>
+        <item name="android:layout_marginBottom">8dp</item>
+
+    </style>
+
+
+    <!-- Row that pairs a colored status dot with a section title, so the
+         reader can tell a section's worst evidence state at a glance
+         without reading every row inside it. -->
+    <style name="DvfcSectionHeaderRow">
+
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+
+        <item name="android:layout_marginTop">22dp</item>
+        <item name="android:layout_marginBottom">8dp</item>
+
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:orientation">horizontal</item>
+
+    </style>
+
+
+    <style name="DvfcSectionDot">
+
+        <item name="android:layout_width">7dp</item>
+        <item name="android:layout_height">7dp</item>
+
+        <item name="android:layout_marginEnd">8dp</item>
+
+        <item name="android:background">@drawable/bg_dvfc_section_dot_waiting</item>
+
+    </style>
+
+
     <style name="DvfcQualityCard">
 
         <item name="android:layout_width">match_parent</item>
@@ -78,6 +115,20 @@
         <item name="android:background">@drawable/bg_dvfc_quality_card</item>
 
         <item name="android:padding">15dp</item>
+
+    </style>
+
+
+    <!-- The hero "overall quality" card: bigger radius + slightly lighter
+         surface so it reads as the anchor of the screen. -->
+    <style name="DvfcHeroCard">
+
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+
+        <item name="android:background">@drawable/bg_dvfc_hero_card</item>
+
+        <item name="android:padding">18dp</item>
 
     </style>
 
@@ -140,20 +191,33 @@
     </style>
 
 
-    <style name="DvfcMetricState">
+    <!-- Pill-shaped evidence badge (PASS / WARN / FAIL / WAITING). Background
+         is swapped at runtime between the bg_dvfc_status_chip_* drawables;
+         only the padding/text styling lives here. -->
+    <style name="DvfcStatusChip">
 
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
 
-        <item name="android:fontFamily">monospace</item>
+        <item name="android:background">@drawable/bg_dvfc_status_chip_waiting</item>
 
-        <item name="android:textColor">@color/fg_faint</item>
+        <item name="android:paddingHorizontal">10dp</item>
+        <item name="android:paddingVertical">3dp</item>
+
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:letterSpacing">0.04</item>
+
+        <item name="android:textColor">@color/fg</item>
 
         <item name="android:textSize">10sp</item>
-
         <item name="android:textStyle">bold</item>
 
     </style>
+
+
+    <!-- Retained name for any code/layout still referencing the old plain-text
+         metric state style; visually now matches DvfcStatusChip's text. -->
+    <style name="DvfcMetricState" parent="DvfcStatusChip"/>
 
 
     <style name="DvfcMetricValue">
@@ -284,6 +348,25 @@
         <item name="android:layout_marginVertical">3dp</item>
 
         <item name="android:background">@color/hairline_soft</item>
+
+    </style>
+
+
+    <!-- Fixed bottom action bar that stays visible while the rest of the
+         checklist scrolls, so USE CALIBRATION / RECALIBRATE never require
+         scrolling to find. -->
+    <style name="DvfcActionBar">
+
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+
+        <item name="android:background">@color/ink_850</item>
+
+        <item name="android:orientation">horizontal</item>
+
+        <item name="android:paddingHorizontal">18dp</item>
+        <item name="android:paddingTop">12dp</item>
+        <item name="android:paddingBottom">16dp</item>
 
     </style>
 
