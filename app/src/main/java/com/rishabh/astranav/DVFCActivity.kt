@@ -9,6 +9,7 @@ import androidx.lifecycle.lifecycleScope
 import com.rishabh.astranav.dvfc.CalibrationStatus
 import com.rishabh.astranav.dvfc.DVFCController
 import com.rishabh.astranav.dvfc.render.DvfcSceneRenderer
+import com.rishabh.astranav.dvfc.render.HeadingCompassView
 import io.github.sceneview.SceneView
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -38,10 +39,11 @@ class DVFCActivity : AppCompatActivity() {
     private lateinit var statusCard: View
     private lateinit var recalibrateButton: Button
     private lateinit var sensorsUnavailableBanner: View
+    private lateinit var headingCompass: HeadingCompassView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_dvfcactivity)
+        setContentView(R.layout.activity_dvfc)
 
         val sceneView = findViewById<SceneView>(R.id.sceneView)
         rollValue = findViewById(R.id.rollValue)
@@ -53,6 +55,7 @@ class DVFCActivity : AppCompatActivity() {
         statusCard = findViewById(R.id.calibrationStatusCard)
         recalibrateButton = findViewById(R.id.btnRecalibrate)
         sensorsUnavailableBanner = findViewById(R.id.sensorsUnavailableBanner)
+        headingCompass = findViewById(R.id.headingCompass)
 
         renderer = DvfcSceneRenderer(sceneView, lifecycleScope)
         renderer.loadPhoneModel(
@@ -71,6 +74,7 @@ class DVFCActivity : AppCompatActivity() {
                 pitchValue.text = formatDeg(state.pitchDeg)
                 yawValue.text = formatDeg(state.yawDeg)
                 headingOffsetValue.text = formatDeg(state.headingOffsetDeg)
+                headingCompass.setHeadingOffsetDeg(state.headingOffsetDeg)
 
                 statusText.text = labelFor(state.status)
                 statusDot.setBackgroundResource(dotFor(state.status))

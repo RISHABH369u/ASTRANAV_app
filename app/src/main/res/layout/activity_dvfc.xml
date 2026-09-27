@@ -1,0 +1,253 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res/auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/ink_900"
+    android:fillViewport="true"
+    android:fitsSystemWindows="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingHorizontal="20dp"
+        android:paddingTop="16dp"
+        android:paddingBottom="28dp">
+
+        <!-- Header -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:letterSpacing="0.18"
+            android:text="ASTRA NAV"
+            android:textColor="@color/fg_faint"
+            android:textSize="11sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:fontFamily="sans-serif-condensed-medium"
+            android:text="DEVICE → VEHICLE FRAME"
+            android:textColor="@color/fg"
+            android:textSize="21sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Calibrating IMU orientation against the vehicle's forward axis"
+            android:textColor="@color/fg_dim"
+            android:textSize="12.5sp" />
+
+        <!-- 3D scene: the real GLB phone, driven live by SensorFusion → DVFCController → DvfcSceneRenderer -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="260dp"
+            android:layout_marginTop="18dp"
+            android:background="@drawable/bg_scene_container"
+            android:clipToOutline="true"
+            android:outlineProvider="background">
+
+            <io.github.sceneview.SceneView
+                android:id="@+id/sceneView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+            <!-- STEP 3 -->
+            <TextView
+                android:id="@+id/sensorsUnavailableBanner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:background="#B3000000"
+                android:gravity="center"
+                android:padding="16dp"
+                android:text="Rotation sensor not available on this device"
+                android:textColor="@color/warn"
+                android:textSize="12.5sp"
+                android:visibility="gone" />
+        </FrameLayout>
+
+        <!-- Device frame → vehicle frame indicator (spec §10 UI content) -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_card"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="14dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="DEVICE FRAME"
+                    android:textColor="@color/fg_faint"
+                    android:textSize="9.5sp"
+                    android:letterSpacing="0.1" />
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:orientation="horizontal">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginEnd="6dp" android:fontFamily="monospace" android:text="X" android:textColor="@color/crit" android:textStyle="bold" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginEnd="6dp" android:fontFamily="monospace" android:text="Y" android:textColor="@color/good" android:textStyle="bold" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:fontFamily="monospace" android:text="Z" android:textColor="@color/blue" android:textStyle="bold" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="8dp"
+                android:text="→"
+                android:textColor="@color/fg_faint"
+                android:textSize="18sp" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="VEHICLE FRAME"
+                    android:textColor="@color/fg_faint"
+                    android:textSize="9.5sp"
+                    android:letterSpacing="0.1" />
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:orientation="horizontal">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginEnd="6dp" android:fontFamily="monospace" android:text="Xv" android:textColor="@color/crit" android:textStyle="bold" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginEnd="6dp" android:fontFamily="monospace" android:text="Yv" android:textColor="@color/good" android:textStyle="bold" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:fontFamily="monospace" android:text="Zv" android:textColor="@color/blue" android:textStyle="bold" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Heading compass: fixed vehicle-forward arrow (blue) vs live phone-forward needle (cyan/green) -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_card"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="14dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="VEHICLE FORWARD vs PHONE FORWARD"
+                android:textColor="@color/fg_faint"
+                android:textSize="9.5sp"
+                android:letterSpacing="0.1" />
+
+            <com.rishabh.astranav.dvfc.render.HeadingCompassView
+                android:id="@+id/headingCompass"
+                android:layout_width="150dp"
+                android:layout_height="150dp"
+                android:layout_marginTop="10dp" />
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+                <View android:layout_width="10dp" android:layout_height="3dp" android:layout_marginEnd="5dp" android:background="@color/blue" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginEnd="14dp" android:text="Vehicle (Zv)" android:textColor="@color/fg_dim" android:textSize="10.5sp" />
+                <View android:layout_width="10dp" android:layout_height="3dp" android:layout_marginEnd="5dp" android:background="@color/cyan" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Phone" android:textColor="@color/fg_dim" android:textSize="10.5sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Live telemetry: Roll / Pitch / Yaw / Heading Offset -->
+        <GridLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:columnCount="2"
+            android:rowCount="2">
+
+            <LinearLayout style="@style/DvfcTelemetryCell" android:layout_column="0" android:layout_row="0" android:layout_marginEnd="5dp" android:layout_marginBottom="5dp">
+                <TextView style="@style/DvfcTelemetryLabel" android:text="ROLL" />
+                <TextView android:id="@+id/rollValue" style="@style/DvfcTelemetryValue" android:textColor="@color/cyan" />
+            </LinearLayout>
+
+            <LinearLayout style="@style/DvfcTelemetryCell" android:layout_column="1" android:layout_row="0" android:layout_marginStart="5dp" android:layout_marginBottom="5dp">
+                <TextView style="@style/DvfcTelemetryLabel" android:text="PITCH" />
+                <TextView android:id="@+id/pitchValue" style="@style/DvfcTelemetryValue" android:textColor="@color/blue" />
+            </LinearLayout>
+
+            <LinearLayout style="@style/DvfcTelemetryCell" android:layout_column="0" android:layout_row="1" android:layout_marginEnd="5dp" android:layout_marginTop="5dp">
+                <TextView style="@style/DvfcTelemetryLabel" android:text="YAW" />
+                <TextView android:id="@+id/yawValue" style="@style/DvfcTelemetryValue" android:textColor="@color/good" />
+            </LinearLayout>
+
+            <LinearLayout style="@style/DvfcTelemetryCell" android:layout_column="1" android:layout_row="1" android:layout_marginStart="5dp" android:layout_marginTop="5dp">
+                <TextView style="@style/DvfcTelemetryLabel" android:text="HEADING OFFSET" />
+                <TextView android:id="@+id/headingOffsetValue" style="@style/DvfcTelemetryValue" android:textColor="@color/fg" />
+            </LinearLayout>
+        </GridLayout>
+
+        <!-- Calibration status -->
+        <LinearLayout
+            android:id="@+id/calibrationStatusCard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_status_default"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="14dp">
+
+            <View
+                android:id="@+id/calibrationStatusDot"
+                android:layout_width="10dp"
+                android:layout_height="10dp"
+                android:background="@drawable/dot_warn" />
+
+            <TextView
+                android:id="@+id/calibrationStatusText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:layout_weight="1"
+                android:text="Stabilizing"
+                android:textColor="@color/fg"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- Action -->
+        <Button
+            android:id="@+id/btnRecalibrate"
+            style="@style/Widget.AppCompat.Button.Borderless"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/bg_primary_button"
+            android:enabled="false"
+            android:gravity="center"
+            android:text="Calibrating…"
+            android:textAllCaps="false"
+            android:textColor="@color/button_primary_text"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+</androidx.core.widget.NestedScrollView>
