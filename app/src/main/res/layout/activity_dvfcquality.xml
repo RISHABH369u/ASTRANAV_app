@@ -1,0 +1,846 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<androidx.core.widget.NestedScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+
+    android:background="@color/ink_900"
+
+    android:fillViewport="true">
+
+    <LinearLayout
+
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+
+        android:orientation="vertical"
+
+        android:paddingHorizontal="18dp"
+        android:paddingTop="18dp"
+        android:paddingBottom="32dp">
+
+
+        <!-- HEADER -->
+
+        <TextView
+            style="@style/DvfcQualityKicker"
+            android:text="ASTRA NAV · DVFC" />
+
+        <TextView
+            style="@style/DvfcQualityTitle"
+            android:text="Vehicle Frame Quality" />
+
+        <TextView
+            style="@style/DvfcQualitySubtitle"
+            android:text="Validate sensor preparation, calibration evidence and the final Device → Vehicle transform before navigation." />
+
+
+        <!-- ================================================= -->
+        <!-- 01 OVERALL QUALITY -->
+        <!-- ================================================= -->
+
+        <LinearLayout
+            style="@style/DvfcQualityCard"
+            android:orientation="vertical">
+
+            <LinearLayout
+
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+
+                android:gravity="center_vertical">
+
+                <LinearLayout
+
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+
+                    android:layout_weight="1"
+
+                    android:orientation="vertical">
+
+                    <TextView
+                        style="@style/DvfcSectionLabel"
+                        android:text="OVERALL VEHICLE FRAME QUALITY" />
+
+                    <TextView
+                        android:id="@+id/dvfcQualityStatus"
+
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+
+                        android:layout_marginTop="6dp"
+
+                        android:text="WAITING FOR TELEMETRY"
+
+                        android:textColor="@color/warn"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+
+                </LinearLayout>
+
+
+                <TextView
+
+                    android:id="@+id/dvfcQualityScore"
+
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+
+                    android:fontFamily="monospace"
+
+                    android:text="—"
+
+                    android:textColor="@color/cyan"
+                    android:textSize="34sp"
+                    android:textStyle="bold" />
+
+            </LinearLayout>
+
+
+            <ProgressBar
+
+                android:id="@+id/dvfcQualityProgress"
+
+                style="?android:attr/progressBarStyleHorizontal"
+
+                android:layout_width="match_parent"
+                android:layout_height="6dp"
+
+                android:layout_marginTop="14dp"
+
+                android:max="100"
+                android:progress="0" />
+
+        </LinearLayout>
+
+
+
+        <!-- ================================================= -->
+        <!-- 02 SENSOR ADAPTER -->
+        <!-- ================================================= -->
+
+        <TextView
+            style="@style/DvfcQualitySectionTitle"
+            android:text="02  SENSOR ADAPTER" />
+
+
+        <LinearLayout
+
+            style="@style/DvfcQualityCard"
+
+            android:orientation="vertical">
+
+
+            <TextView
+
+                style="@style/DvfcMiniTitle"
+
+                android:text="RAW SENSOR STREAM → NORMALIZED STREAM" />
+
+
+            <!-- PIPELINE -->
+
+            <LinearLayout
+
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+
+                android:layout_marginTop="12dp"
+
+                android:gravity="center_vertical">
+
+
+                <LinearLayout
+                    style="@style/DvfcPipelineNode">
+
+                    <TextView
+                        style="@style/DvfcPipelineNodeTitle"
+                        android:text="TIMESTAMP" />
+
+                    <TextView
+                        style="@style/DvfcPipelineNodeDetail"
+                        android:text="sensor clocks" />
+
+                </LinearLayout>
+
+
+                <TextView
+                    style="@style/DvfcPipelineArrow"
+                    android:text="→" />
+
+
+                <LinearLayout
+                    style="@style/DvfcPipelineNode">
+
+                    <TextView
+                        style="@style/DvfcPipelineNodeTitle"
+                        android:text="SYNC" />
+
+                    <TextView
+                        style="@style/DvfcPipelineNodeDetail"
+                        android:text="aligned time" />
+
+                </LinearLayout>
+
+
+                <TextView
+                    style="@style/DvfcPipelineArrow"
+                    android:text="→" />
+
+
+                <LinearLayout
+                    style="@style/DvfcPipelineNode">
+
+                    <TextView
+                        style="@style/DvfcPipelineNodeTitle"
+                        android:text="UNITS" />
+
+                    <TextView
+                        style="@style/DvfcPipelineNodeDetail"
+                        android:text="SI normalized" />
+
+                </LinearLayout>
+
+            </LinearLayout>
+
+
+            <View style="@style/DvfcDivider" />
+
+
+            <LinearLayout style="@style/DvfcMetricRow">
+
+                <TextView
+                    style="@style/DvfcMetricName"
+                    android:text="Timestamp Synchronization" />
+
+                <TextView
+                    android:id="@+id/adapterTimeSync"
+                    style="@style/DvfcMetricState"
+                    android:text="WAITING" />
+
+            </LinearLayout>
+
+
+            <LinearLayout style="@style/DvfcMetricRow">
+
+                <TextView
+                    style="@style/DvfcMetricName"
+                    android:text="Unit Normalization" />
+
+                <TextView
+                    android:id="@+id/adapterUnits"
+                    style="@style/DvfcMetricState"
+                    android:text="WAITING" />
+
+            </LinearLayout>
+
+
+            <LinearLayout style="@style/DvfcMetricRow">
+
+                <TextView
+                    style="@style/DvfcMetricName"
+                    android:text="Data Gaps" />
+
+                <TextView
+                    android:id="@+id/adapterGaps"
+                    style="@style/DvfcMetricState"
+                    android:text="WAITING" />
+
+            </LinearLayout>
+
+
+            <LinearLayout style="@style/DvfcMetricRow">
+
+                <TextView
+                    style="@style/DvfcMetricName"
+                    android:text="Resampling" />
+
+                <TextView
+                    android:id="@+id/adapterResampling"
+                    style="@style/DvfcMetricState"
+                    android:text="WAITING" />
+
+            </LinearLayout>
+
+
+            <LinearLayout style="@style/DvfcMetricRow">
+
+                <TextView
+                    style="@style/DvfcMetricName"
+                    android:text="Gravity Compensation" />
+
+                <TextView
+                    android:id="@+id/adapterGravity"
+                    style="@style/DvfcMetricState"
+                    android:text="WAITING" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+
+
+        <!-- ================================================= -->
+        <!-- 03 CALIBRATION -->
+        <!-- ================================================= -->
+
+        <TextView
+            style="@style/DvfcQualitySectionTitle"
+            android:text="03  CALIBRATION QUALITY" />
+
+
+        <LinearLayout
+            style="@style/DvfcQualityCard"
+            android:orientation="vertical">
+
+
+            <LinearLayout style="@style/DvfcMetricRow">
+
+                <TextView
+                    style="@style/DvfcMetricName"
+                    android:text="Manual Alignment" />
+
+                <TextView
+                    android:id="@+id/scoreManual"
+                    style="@style/DvfcMetricState"
+                    android:text="WAITING" />
+
+            </LinearLayout>
+
+
+            <LinearLayout style="@style/DvfcMetricRow">
+
+                <TextView
+                    style="@style/DvfcMetricName"
+                    android:text="Gravity Leveling" />
+
+                <TextView
+                    android:id="@+id/scoreGravity"
+                    style="@style/DvfcMetricState"
+                    android:text="WAITING" />
+
+            </LinearLayout>
+
+
+            <LinearLayout style="@style/DvfcMetricRow">
+
+                <TextView
+                    style="@style/DvfcMetricName"
+                    android:text="Gyro Bias Estimation" />
+
+                <TextView
+                    android:id="@+id/scoreGyro"
+                    style="@style/DvfcMetricState"
+                    android:text="WAITING" />
+
+            </LinearLayout>
+
+
+            <LinearLayout style="@style/DvfcMetricRow">
+
+                <TextView
+                    style="@style/DvfcMetricName"
+                    android:text="Mount Azimuth" />
+
+                <TextView
+                    android:id="@+id/scoreAzimuth"
+                    style="@style/DvfcMetricState"
+                    android:text="WAITING" />
+
+            </LinearLayout>
+
+
+            <LinearLayout style="@style/DvfcMetricRow">
+
+                <TextView
+                    style="@style/DvfcMetricName"
+                    android:text="Automatic Refinement" />
+
+                <TextView
+                    android:id="@+id/scoreRefinement"
+                    style="@style/DvfcMetricState"
+                    android:text="WAITING" />
+
+            </LinearLayout>
+
+
+            <LinearLayout style="@style/DvfcMetricRow">
+
+                <TextView
+                    style="@style/DvfcMetricName"
+                    android:text="Mount Stability" />
+
+                <TextView
+                    android:id="@+id/scoreMount"
+                    style="@style/DvfcMetricState"
+                    android:text="WAITING" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+
+
+        <!-- ================================================= -->
+        <!-- 04 GNSS -->
+        <!-- ================================================= -->
+
+        <TextView
+            style="@style/DvfcQualitySectionTitle"
+            android:text="04  GNSS QUALITY" />
+
+
+        <LinearLayout
+            style="@style/DvfcQualityCard"
+            android:orientation="horizontal">
+
+
+            <LinearLayout
+                style="@style/DvfcMetricBlock">
+
+                <TextView
+                    style="@style/DvfcMetricCaption"
+                    android:text="ACCURACY" />
+
+                <TextView
+                    android:id="@+id/gnssAccuracy"
+                    style="@style/DvfcMetricBig"
+                    android:text="—" />
+
+            </LinearLayout>
+
+
+            <LinearLayout
+                style="@style/DvfcMetricBlock">
+
+                <TextView
+                    style="@style/DvfcMetricCaption"
+                    android:text="SPEED" />
+
+                <TextView
+                    android:id="@+id/gnssSpeed"
+                    style="@style/DvfcMetricBig"
+                    android:text="—" />
+
+            </LinearLayout>
+
+
+            <LinearLayout
+                style="@style/DvfcMetricBlock">
+
+                <TextView
+                    style="@style/DvfcMetricCaption"
+                    android:text="VALID SAMPLES" />
+
+                <TextView
+                    android:id="@+id/gnssSamples"
+                    style="@style/DvfcMetricBig"
+                    android:text="—" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+
+
+        <!-- ================================================= -->
+        <!-- 05 EXCITATION -->
+        <!-- ================================================= -->
+
+        <TextView
+            style="@style/DvfcQualitySectionTitle"
+            android:text="05  ACCELERATION EXCITATION" />
+
+
+        <LinearLayout
+            style="@style/DvfcQualityCard"
+            android:orientation="vertical">
+
+
+            <TextView
+                style="@style/DvfcMiniTitle"
+                android:text="FORWARD-MOTION EVIDENCE" />
+
+
+            <TextView
+
+                android:id="@+id/excitationValue"
+
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+
+                android:layout_marginTop="8dp"
+
+                android:fontFamily="monospace"
+
+                android:text="—"
+
+                android:textColor="@color/cyan"
+                android:textSize="28sp"
+                android:textStyle="bold" />
+
+
+            <TextView
+
+                style="@style/DvfcMetricCaption"
+
+                android:text="EXCITATION SCORE" />
+
+
+            <TextView
+
+                android:id="@+id/excitationSamples"
+
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+
+                android:layout_marginTop="10dp"
+
+                android:text="Usable samples: —"
+
+                android:textColor="@color/fg_dim"
+                android:textSize="12sp" />
+
+        </LinearLayout>
+
+
+
+        <!-- ================================================= -->
+        <!-- 06 AZIMUTH -->
+        <!-- ================================================= -->
+
+        <TextView
+            style="@style/DvfcQualitySectionTitle"
+            android:text="06  MOUNT AZIMUTH CONVERGENCE" />
+
+
+        <LinearLayout
+            style="@style/DvfcQualityCard"
+            android:orientation="vertical">
+
+
+            <LinearLayout style="@style/DvfcMetricRow">
+
+                <TextView
+                    style="@style/DvfcMetricName"
+                    android:text="Manual Estimate" />
+
+                <TextView
+                    android:id="@+id/azimuthManual"
+                    style="@style/DvfcMetricValue"
+                    android:text="—" />
+
+            </LinearLayout>
+
+
+            <LinearLayout style="@style/DvfcMetricRow">
+
+                <TextView
+                    style="@style/DvfcMetricName"
+                    android:text="Automatic Estimate" />
+
+                <TextView
+                    android:id="@+id/azimuthAutomatic"
+                    style="@style/DvfcMetricValue"
+                    android:text="—" />
+
+            </LinearLayout>
+
+
+            <LinearLayout style="@style/DvfcMetricRow">
+
+                <TextView
+                    style="@style/DvfcMetricName"
+                    android:text="Residual" />
+
+                <TextView
+                    android:id="@+id/azimuthResidual"
+                    style="@style/DvfcMetricValue"
+                    android:text="—" />
+
+            </LinearLayout>
+
+
+            <LinearLayout style="@style/DvfcMetricRow">
+
+                <TextView
+                    style="@style/DvfcMetricName"
+                    android:text="Circular Consistency" />
+
+                <TextView
+                    android:id="@+id/azimuthConsistency"
+                    style="@style/DvfcMetricValue"
+                    android:text="—" />
+
+            </LinearLayout>
+
+
+            <LinearLayout style="@style/DvfcMetricRow">
+
+                <TextView
+                    style="@style/DvfcMetricName"
+                    android:text="Valid Samples" />
+
+                <TextView
+                    android:id="@+id/azimuthSamples"
+                    style="@style/DvfcMetricValue"
+                    android:text="—" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+
+
+        <!-- ================================================= -->
+        <!-- 07 / 08 STABILITY -->
+        <!-- ================================================= -->
+
+        <TextView
+            style="@style/DvfcQualitySectionTitle"
+            android:text="07  STABILITY MONITORS" />
+
+
+        <LinearLayout
+
+            style="@style/DvfcQualityCard"
+
+            android:orientation="horizontal">
+
+
+            <LinearLayout
+                style="@style/DvfcMetricBlock">
+
+                <TextView
+                    style="@style/DvfcMetricCaption"
+                    android:text="STATIONARY" />
+
+                <TextView
+                    android:id="@+id/stationaryScore"
+                    style="@style/DvfcMetricBig"
+                    android:text="—" />
+
+                <TextView
+                    android:id="@+id/stationarySamples"
+                    style="@style/DvfcMetricCaption"
+                    android:text="samples: —" />
+
+            </LinearLayout>
+
+
+            <LinearLayout
+                style="@style/DvfcMetricBlock">
+
+                <TextView
+                    style="@style/DvfcMetricCaption"
+                    android:text="GRAVITY" />
+
+                <TextView
+                    android:id="@+id/gravityScore"
+                    style="@style/DvfcMetricBig"
+                    android:text="—" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+
+
+        <!-- ================================================= -->
+        <!-- 09 MOUNT CHANGE -->
+        <!-- ================================================= -->
+
+        <TextView
+            style="@style/DvfcQualitySectionTitle"
+            android:text="09  MOUNT-CHANGE STATUS" />
+
+
+        <LinearLayout
+
+            style="@style/DvfcQualityCard"
+
+            android:orientation="vertical">
+
+
+            <TextView
+
+                android:id="@+id/mountStatus"
+
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+
+                android:text="WAITING"
+
+                android:textColor="@color/warn"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+
+            <TextView
+
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+
+                android:layout_marginTop="5dp"
+
+                android:text="Persistent orientation change should trigger recalibration before navigation."
+
+                android:textColor="@color/fg_dim"
+                android:textSize="11.5sp" />
+
+        </LinearLayout>
+
+
+
+        <!-- ================================================= -->
+        <!-- 10 FINAL TRANSFORM -->
+        <!-- ================================================= -->
+
+        <TextView
+
+            style="@style/DvfcQualitySectionTitle"
+
+            android:text="10  FINE-TUNED DEVICE → VEHICLE TRANSFORM" />
+
+
+        <LinearLayout
+
+            style="@style/DvfcQualityCard"
+
+            android:orientation="vertical">
+
+
+            <LinearLayout style="@style/DvfcMetricRow">
+
+                <TextView
+                    style="@style/DvfcMetricName"
+                    android:text="YAW" />
+
+                <TextView
+                    android:id="@+id/finalYaw"
+                    style="@style/DvfcMetricValue"
+                    android:text="—" />
+
+            </LinearLayout>
+
+
+            <LinearLayout style="@style/DvfcMetricRow">
+
+                <TextView
+                    style="@style/DvfcMetricName"
+                    android:text="PITCH" />
+
+                <TextView
+                    android:id="@+id/finalPitch"
+                    style="@style/DvfcMetricValue"
+                    android:text="—" />
+
+            </LinearLayout>
+
+
+            <LinearLayout style="@style/DvfcMetricRow">
+
+                <TextView
+                    style="@style/DvfcMetricName"
+                    android:text="ROLL" />
+
+                <TextView
+                    android:id="@+id/finalRoll"
+                    style="@style/DvfcMetricValue"
+                    android:text="—" />
+
+            </LinearLayout>
+
+
+            <View style="@style/DvfcDivider" />
+
+
+            <TextView
+
+                style="@style/DvfcMetricCaption"
+
+                android:text="GYRO BIAS · X / Y / Z" />
+
+
+            <TextView
+
+                android:id="@+id/finalBias"
+
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+
+                android:layout_marginTop="6dp"
+
+                android:fontFamily="monospace"
+
+                android:text="—"
+
+                android:textColor="@color/fg"
+                android:textSize="12sp" />
+
+        </LinearLayout>
+
+
+
+        <!-- ================================================= -->
+        <!-- 11 USE CALIBRATION -->
+        <!-- ================================================= -->
+
+        <Button
+
+            android:id="@+id/actionUseCalibration"
+
+            style="@style/Widget.AppCompat.Button.Borderless"
+
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+
+            android:layout_marginTop="22dp"
+
+            android:background="@drawable/bg_dvfc_quality_primary"
+
+            android:enabled="false"
+
+            android:text="USE CALIBRATION"
+
+            android:textAllCaps="false"
+
+            android:textColor="@color/button_primary_text"
+
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+
+
+        <!-- ================================================= -->
+        <!-- 12 RECALIBRATE -->
+        <!-- ================================================= -->
+
+        <Button
+
+            android:id="@+id/actionRecalibrate"
+
+            style="@style/Widget.AppCompat.Button.Borderless"
+
+            android:layout_width="match_parent"
+            android:layout_height="54dp"
+
+            android:layout_marginTop="10dp"
+
+            android:background="@drawable/bg_dvfc_quality_secondary"
+
+            android:text="RECALIBRATE"
+
+            android:textAllCaps="false"
+
+            android:textColor="@color/fg"
+
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+    </LinearLayout>
+
+</androidx.core.widget.NestedScrollView>

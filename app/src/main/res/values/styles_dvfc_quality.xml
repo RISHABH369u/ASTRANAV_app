@@ -1,0 +1,290 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<resources>
+
+
+    <style name="DvfcQualityKicker">
+
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+
+        <item name="android:letterSpacing">0.18</item>
+
+        <item name="android:textColor">@color/fg_faint</item>
+
+        <item name="android:textSize">10sp</item>
+
+        <item name="android:textStyle">bold</item>
+
+    </style>
+
+
+    <style name="DvfcQualityTitle">
+
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+
+        <item name="android:layout_marginTop">6dp</item>
+
+        <item name="android:fontFamily">sans-serif-condensed-medium</item>
+
+        <item name="android:textColor">@color/fg</item>
+
+        <item name="android:textSize">23sp</item>
+
+        <item name="android:textStyle">bold</item>
+
+    </style>
+
+
+    <style name="DvfcQualitySubtitle">
+
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+
+        <item name="android:layout_marginTop">5dp</item>
+
+        <item name="android:textColor">@color/fg_dim</item>
+
+        <item name="android:textSize">12sp</item>
+
+    </style>
+
+
+    <style name="DvfcQualitySectionTitle">
+
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+
+        <item name="android:layout_marginTop">22dp</item>
+        <item name="android:layout_marginBottom">8dp</item>
+
+        <item name="android:letterSpacing">0.12</item>
+
+        <item name="android:textColor">@color/fg_faint</item>
+
+        <item name="android:textSize">10sp</item>
+
+        <item name="android:textStyle">bold</item>
+
+    </style>
+
+
+    <style name="DvfcQualityCard">
+
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+
+        <item name="android:background">@drawable/bg_dvfc_quality_card</item>
+
+        <item name="android:padding">15dp</item>
+
+    </style>
+
+
+    <style name="DvfcSectionLabel">
+
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+
+        <item name="android:textColor">@color/fg_faint</item>
+
+        <item name="android:textSize">9sp</item>
+
+        <item name="android:textStyle">bold</item>
+
+        <item name="android:letterSpacing">0.1</item>
+
+    </style>
+
+
+    <style name="DvfcMiniTitle">
+
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+
+        <item name="android:textColor">@color/fg_dim</item>
+
+        <item name="android:textSize">9sp</item>
+
+        <item name="android:textStyle">bold</item>
+
+        <item name="android:letterSpacing">0.08</item>
+
+    </style>
+
+
+    <style name="DvfcMetricRow">
+
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+
+        <item name="android:gravity">center_vertical</item>
+
+        <item name="android:paddingVertical">8dp</item>
+
+    </style>
+
+
+    <style name="DvfcMetricName">
+
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+
+        <item name="android:layout_weight">1</item>
+
+        <item name="android:textColor">@color/fg_dim</item>
+
+        <item name="android:textSize">12sp</item>
+
+    </style>
+
+
+    <style name="DvfcMetricState">
+
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+
+        <item name="android:fontFamily">monospace</item>
+
+        <item name="android:textColor">@color/fg_faint</item>
+
+        <item name="android:textSize">10sp</item>
+
+        <item name="android:textStyle">bold</item>
+
+    </style>
+
+
+    <style name="DvfcMetricValue">
+
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+
+        <item name="android:fontFamily">monospace</item>
+
+        <item name="android:textColor">@color/fg</item>
+
+        <item name="android:textSize">12sp</item>
+
+        <item name="android:textStyle">bold</item>
+
+    </style>
+
+
+    <style name="DvfcMetricCaption">
+
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+
+        <item name="android:textColor">@color/fg_faint</item>
+
+        <item name="android:textSize">9sp</item>
+
+        <item name="android:textStyle">bold</item>
+
+        <item name="android:letterSpacing">0.08</item>
+
+    </style>
+
+
+    <style name="DvfcMetricBig">
+
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+
+        <item name="android:layout_marginTop">5dp</item>
+
+        <item name="android:fontFamily">monospace</item>
+
+        <item name="android:textColor">@color/cyan</item>
+
+        <item name="android:textSize">20sp</item>
+
+        <item name="android:textStyle">bold</item>
+
+    </style>
+
+
+    <style name="DvfcMetricBlock">
+
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+
+        <item name="android:layout_weight">1</item>
+
+        <item name="android:paddingHorizontal">4dp</item>
+
+    </style>
+
+
+    <style name="DvfcPipelineNode">
+
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+
+        <item name="android:layout_weight">1</item>
+
+        <item name="android:background">@drawable/bg_dvfc_quality_pipeline</item>
+
+        <item name="android:gravity">center</item>
+
+        <item name="android:padding">8dp</item>
+
+    </style>
+
+
+    <style name="DvfcPipelineNodeTitle">
+
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+
+        <item name="android:textColor">@color/cyan</item>
+
+        <item name="android:textSize">8sp</item>
+
+        <item name="android:textStyle">bold</item>
+
+    </style>
+
+
+    <style name="DvfcPipelineNodeDetail">
+
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+
+        <item name="android:layout_marginTop">2dp</item>
+
+        <item name="android:textColor">@color/fg_faint</item>
+
+        <item name="android:textSize">8sp</item>
+
+    </style>
+
+
+    <style name="DvfcPipelineArrow">
+
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+
+        <item name="android:layout_marginHorizontal">4dp</item>
+
+        <item name="android:textColor">@color/fg_faint</item>
+
+        <item name="android:textSize">14sp</item>
+
+    </style>
+
+
+    <style name="DvfcDivider">
+
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">1dp</item>
+
+        <item name="android:layout_marginVertical">3dp</item>
+
+        <item name="android:background">@color/hairline_soft</item>
+
+    </style>
+
+</resources>

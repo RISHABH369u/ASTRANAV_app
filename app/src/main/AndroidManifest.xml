@@ -63,17 +63,21 @@
             android:name=".SensorCheckActivity"
             android:exported="false"
             android:theme="@style/Theme.ASTRANAV.SensorCheck" />
-
         <activity
             android:name=".DVFCActivity"
             android:exported="true"
-            android:theme="@style/Theme.AppCompat.DayNight.NoActionBar">
-        </activity>
-
+            android:theme="@style/Theme.AppCompat.DayNight.NoActionBar"></activity>
         <activity
             android:name=".mountingchange.MountingChangeActivity"
             android:exported="false"
             android:theme="@style/Theme.AppCompat.DayNight.NoActionBar" />
+        <activity
+            android:name=".DVFCQualityActivity"
+            android:exported="false"
+            android:theme="@style/Theme.AppCompat.DayNight.NoActionBar"
+            android:windowSoftInputMode="adjustResize" />
+
+
     </application>
 
 </manifest>
