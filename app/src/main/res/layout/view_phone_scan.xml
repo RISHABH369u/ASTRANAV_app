@@ -49,7 +49,7 @@
                 android:layout_height="22dp"
                 android:layout_gravity="center"
                 android:src="@drawable/ic_navigate"
-                app:tint="@color/cyan" />
+                android:tint="@color/cyan" />
         </FrameLayout>
     </LinearLayout>
 </merge>

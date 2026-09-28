@@ -6,6 +6,7 @@ import android.view.View
 import android.widget.Button
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+
 import com.rishabh.astranav.dvfcquality.AdapterEvidence
 import com.rishabh.astranav.dvfcquality.AzimuthEvidence
 import com.rishabh.astranav.dvfcquality.CalibrationEvidence
@@ -20,7 +21,12 @@ import com.rishabh.astranav.ui.view.CircularGaugeView
 
 import java.util.Locale
 
+
 class DVFCQualityActivity : AppCompatActivity() {
+
+    // ============================================================
+    // INTENT EXTRAS
+    // ============================================================
 
     companion object {
 
@@ -113,12 +119,45 @@ class DVFCQualityActivity : AppCompatActivity() {
 
         const val EXTRA_LINEAR_ACCELERATION_MAGNITUDE =
             "dvfc_linear_acceleration_magnitude"
+
+        // ------------------------------------------------------------
+        // GNSS REFINEMENT
+        // ------------------------------------------------------------
+
+        const val EXTRA_GNSS_ACCURACY_M =
+            "dvfc_gnss_accuracy_m"
+
+        const val EXTRA_GNSS_SPEED_MPS =
+            "dvfc_gnss_speed_mps"
+
+        const val EXTRA_GNSS_VALID_SAMPLES =
+            "dvfc_gnss_valid_samples"
+
+        const val EXTRA_AUTOMATIC_AZIMUTH_DEG =
+            "dvfc_automatic_azimuth_deg"
+
+        const val EXTRA_AZIMUTH_RESIDUAL_DEG =
+            "dvfc_azimuth_residual_deg"
+
+        const val EXTRA_AZIMUTH_CONSISTENCY =
+            "dvfc_azimuth_consistency"
+
     }
+
+
+    // ============================================================
+    // UI
+    // ============================================================
 
     private lateinit var score: TextView
     private lateinit var status: TextView
     private lateinit var hint: TextView
     private lateinit var gauge: CircularGaugeView
+
+
+    // ============================================================
+    // TRANSFORM
+    // ============================================================
 
     private var transformValid = false
     private var calibrationComplete = false
@@ -126,26 +165,22 @@ class DVFCQualityActivity : AppCompatActivity() {
     private var yawDeg = 0.0
     private var pitchDeg = 0.0
     private var rollDeg = 0.0
+    private var headingOffsetDeg = 0.0
+
+
+    // ============================================================
+    // SENSOR ADAPTER TELEMETRY
+    // ============================================================
 
     private var sampleCount = 0
+
     private var timestampJitterMs = -1.0
+
     private var sampleHz = -1.0
+
     private var gapCount = 0
+
     private var maxGapMs = -1.0
-
-    private var stationarySamples = 0
-    private var stationaryScore = -1.0
-
-    private var gyroBiasX = Double.NaN
-    private var gyroBiasY = Double.NaN
-    private var gyroBiasZ = Double.NaN
-    private var gyroRms = -1.0
-
-    private var sensorsAvailable = false
-    private var gravityAvailable = false
-    private var accelerationAvailable = false
-    private var gnssAvailable = false
-    private var autoAzimuthAvailable = false
 
     private var duplicateTimestampCount = 0
 
@@ -164,235 +199,124 @@ class DVFCQualityActivity : AppCompatActivity() {
     private var linearAccelerationMagnitude = -1.0
 
 
+    // ============================================================
+    // STATIONARY / GYRO
+    // ============================================================
+
+    private var stationarySamples = 0
+
+    private var stationaryScore = -1.0
+
+    private var gyroBiasX = Double.NaN
+
+    private var gyroBiasY = Double.NaN
+
+    private var gyroBiasZ = Double.NaN
+
+    private var gyroRms = -1.0
+
+
+    // ============================================================
+    // SENSOR AVAILABILITY
+    // ============================================================
+
+    private var sensorsAvailable = false
+
+    private var gravityAvailable = false
+
+    private var accelerationAvailable = false
+
+    private var gnssAvailable = false
+
+    private var autoAzimuthAvailable = false
+
+
+    // ============================================================
+    // GNSS TELEMETRY
+    // ============================================================
+
+    private var gnssAccuracyM: Double? = null
+
+    private var gnssSpeedMps: Double? = null
+
+    private var gnssValidSamples: Int? = null
+
+
+    // ============================================================
+    // AUTOMATIC AZIMUTH
+    // ============================================================
+
+    private var automaticAzimuthDeg: Double? = null
+
+    private var azimuthResidualDeg: Double? = null
+
+    private var azimuthConsistency: Double? = null
+
+
+    // ============================================================
+    // ACTIVITY
+    // ============================================================
+
     override fun onCreate(
         savedInstanceState: Bundle?
     ) {
-        super.onCreate(savedInstanceState)
+
+        super.onCreate(
+            savedInstanceState
+        )
 
         setContentView(
             R.layout.activity_dvfcquality
         )
 
 
-        transformValid =
-            intent.getBooleanExtra(
-                EXTRA_TRANSFORM_VALID,
-                false
-            )
+        // ========================================================
+        // READ INTENT TELEMETRY
+        // ========================================================
 
-        calibrationComplete =
-            intent.getBooleanExtra(
-                EXTRA_CALIBRATION_COMPLETE,
-                false
-            )
+        readIntentTelemetry()
 
-        yawDeg =
-            intent.getDoubleExtra(
-                EXTRA_YAW,
-                0.0
-            )
 
-        pitchDeg =
-            intent.getDoubleExtra(
-                EXTRA_PITCH,
-                0.0
-            )
-
-        rollDeg =
-            intent.getDoubleExtra(
-                EXTRA_ROLL,
-                0.0
-            )
-
-        sampleCount =
-            intent.getIntExtra(
-                EXTRA_SAMPLE_COUNT,
-                0
-            )
-
-        timestampJitterMs =
-            intent.getDoubleExtra(
-                EXTRA_TIMESTAMP_JITTER,
-                -1.0
-            )
-
-        sampleHz =
-            intent.getDoubleExtra(
-                EXTRA_SAMPLE_HZ,
-                -1.0
-            )
-
-        gapCount =
-            intent.getIntExtra(
-                EXTRA_GAP_COUNT,
-                0
-            )
-
-        maxGapMs =
-            intent.getDoubleExtra(
-                EXTRA_MAX_GAP,
-                -1.0
-            )
-
-        stationarySamples =
-            intent.getIntExtra(
-                EXTRA_STATIONARY_SAMPLES,
-                0
-            )
-
-        stationaryScore =
-            intent.getDoubleExtra(
-                EXTRA_STATIONARY_SCORE,
-                -1.0
-            )
-
-        gyroBiasX =
-            intent.getDoubleExtra(
-                EXTRA_GYRO_BIAS_X,
-                Double.NaN
-            )
-
-        gyroBiasY =
-            intent.getDoubleExtra(
-                EXTRA_GYRO_BIAS_Y,
-                Double.NaN
-            )
-
-        gyroBiasZ =
-            intent.getDoubleExtra(
-                EXTRA_GYRO_BIAS_Z,
-                Double.NaN
-            )
-
-        gyroRms =
-            intent.getDoubleExtra(
-                EXTRA_GYRO_RMS,
-                -1.0
-            )
-
-        sensorsAvailable =
-            intent.getBooleanExtra(
-                EXTRA_SENSORS_AVAILABLE,
-                false
-            )
-
-        gravityAvailable =
-            intent.getBooleanExtra(
-                EXTRA_GRAVITY_AVAILABLE,
-                false
-            )
-
-        accelerationAvailable =
-            intent.getBooleanExtra(
-                EXTRA_ACCELERATION_AVAILABLE,
-                false
-            )
-
-        gnssAvailable =
-            intent.getBooleanExtra(
-                EXTRA_GNSS_AVAILABLE,
-                false
-            )
-
-        autoAzimuthAvailable =
-            intent.getBooleanExtra(
-                EXTRA_AUTO_AZIMUTH_AVAILABLE,
-                false
-            )
-
-        duplicateTimestampCount =
-            intent.getIntExtra(
-                EXTRA_DUPLICATE_TIMESTAMPS,
-                0
-            )
-
-        resamplingActive =
-            intent.getBooleanExtra(
-                EXTRA_RESAMPLING_ACTIVE,
-                false
-            )
-
-        resamplingRateHz =
-            intent.getDoubleExtra(
-                EXTRA_RESAMPLING_RATE_HZ,
-                -1.0
-            )
-
-        gravityMagnitude =
-            intent.getDoubleExtra(
-                EXTRA_GRAVITY_MAGNITUDE,
-                -1.0
-            )
-
-        gravityStable =
-            intent.getBooleanExtra(
-                EXTRA_GRAVITY_STABLE,
-                false
-            )
-
-        gravityLevelRollDeg =
-            intent.getDoubleExtra(
-                EXTRA_GRAVITY_ROLL,
-                0.0
-            )
-
-        gravityLevelPitchDeg =
-            intent.getDoubleExtra(
-                EXTRA_GRAVITY_PITCH,
-                0.0
-            )
-
-        linearAccelerationMagnitude =
-            intent.getDoubleExtra(
-                EXTRA_LINEAR_ACCELERATION_MAGNITUDE,
-                -1.0
-            )
-
+        // ========================================================
+        // BIND UI
+        // ========================================================
 
         score =
-            findViewById(R.id.dvfcQualityScore)
+            findViewById(
+                R.id.dvfcQualityScore
+            )
 
         status =
-            findViewById(R.id.dvfcQualityStatus)
+            findViewById(
+                R.id.dvfcQualityStatus
+            )
 
         hint =
-            findViewById(R.id.dvfcQualityHint)
+            findViewById(
+                R.id.dvfcQualityHint
+            )
 
         gauge =
-            findViewById(R.id.dvfcQualityGauge)
+            findViewById(
+                R.id.dvfcQualityGauge
+            )
+
+
+        // ========================================================
+        // USE CALIBRATION
+        // ========================================================
 
         findViewById<Button>(
             R.id.actionUseCalibration
         ).setOnClickListener {
 
-            val input =
-                buildQualityInput()
-
-            val result =
-                DvfcQualityEngine.evaluate(input)
-
-            if (
-                result.status == "READY" ||
-                result.status == "DEGRADED"
-            ) {
-
-                setResult(
-                    RESULT_OK
-                )
-
-                finish()
-
-            } else {
-
-                status.text =
-                    result.hardGateFailure
-                        ?: "VALIDATION REQUIRED"
-
-                status.setBackgroundResource(
-                    R.drawable.bg_dvfc_status_chip_crit
-                )
-            }
+            evaluateAndUseCalibration()
         }
+
+
+        // ========================================================
+        // RECALIBRATE
+        // ========================================================
 
         findViewById<Button>(
             R.id.actionRecalibrate
@@ -408,27 +332,392 @@ class DVFCQualityActivity : AppCompatActivity() {
             finish()
         }
 
+
+        // ========================================================
+        // INITIAL RENDER
+        // ========================================================
+
         render(
             buildQualityInput()
         )
     }
 
-    /**
-     * IMPORTANT:
-     *
-     * Current main branch does not yet expose all
-     * Sensor Adapter + GNSS refinement telemetry.
-     *
-     * Therefore we intentionally DO NOT fabricate values.
-     *
-     * Replace this method with the shared runtime telemetry
-     * once Sensor Adapter / DVFCController exposes it.
-     */
+
+    // ============================================================
+    // READ TELEMETRY
+    // ============================================================
+
+    private fun readIntentTelemetry() {
+
+        transformValid =
+            intent.getBooleanExtra(
+                EXTRA_TRANSFORM_VALID,
+                false
+            )
+
+
+        calibrationComplete =
+            intent.getBooleanExtra(
+                EXTRA_CALIBRATION_COMPLETE,
+                false
+            )
+
+
+        yawDeg =
+            intent.getDoubleExtra(
+                EXTRA_YAW,
+                0.0
+            )
+
+
+        pitchDeg =
+            intent.getDoubleExtra(
+                EXTRA_PITCH,
+                0.0
+            )
+
+
+        rollDeg =
+            intent.getDoubleExtra(
+                EXTRA_ROLL,
+                0.0
+            )
+
+
+        headingOffsetDeg =
+            intent.getDoubleExtra(
+                EXTRA_HEADING_OFFSET,
+                0.0
+            )
+
+
+        // ========================================================
+        // SENSOR ADAPTER
+        // ========================================================
+
+        sampleCount =
+            intent.getIntExtra(
+                EXTRA_SAMPLE_COUNT,
+                0
+            )
+
+
+        timestampJitterMs =
+            intent.getDoubleExtra(
+                EXTRA_TIMESTAMP_JITTER,
+                -1.0
+            )
+
+
+        sampleHz =
+            intent.getDoubleExtra(
+                EXTRA_SAMPLE_HZ,
+                -1.0
+            )
+
+
+        gapCount =
+            intent.getIntExtra(
+                EXTRA_GAP_COUNT,
+                0
+            )
+
+
+        maxGapMs =
+            intent.getDoubleExtra(
+                EXTRA_MAX_GAP,
+                -1.0
+            )
+
+
+        duplicateTimestampCount =
+            intent.getIntExtra(
+                EXTRA_DUPLICATE_TIMESTAMPS,
+                0
+            )
+
+
+        resamplingActive =
+            intent.getBooleanExtra(
+                EXTRA_RESAMPLING_ACTIVE,
+                false
+            )
+
+
+        resamplingRateHz =
+            intent.getDoubleExtra(
+                EXTRA_RESAMPLING_RATE_HZ,
+                -1.0
+            )
+
+
+        gravityMagnitude =
+            intent.getDoubleExtra(
+                EXTRA_GRAVITY_MAGNITUDE,
+                -1.0
+            )
+
+
+        gravityStable =
+            intent.getBooleanExtra(
+                EXTRA_GRAVITY_STABLE,
+                false
+            )
+
+
+        gravityLevelRollDeg =
+            intent.getDoubleExtra(
+                EXTRA_GRAVITY_ROLL,
+                0.0
+            )
+
+
+        gravityLevelPitchDeg =
+            intent.getDoubleExtra(
+                EXTRA_GRAVITY_PITCH,
+                0.0
+            )
+
+
+        linearAccelerationMagnitude =
+            intent.getDoubleExtra(
+                EXTRA_LINEAR_ACCELERATION_MAGNITUDE,
+                -1.0
+            )
+
+
+        // ========================================================
+        // STATIONARY
+        // ========================================================
+
+        stationarySamples =
+            intent.getIntExtra(
+                EXTRA_STATIONARY_SAMPLES,
+                0
+            )
+
+
+        stationaryScore =
+            intent.getDoubleExtra(
+                EXTRA_STATIONARY_SCORE,
+                -1.0
+            )
+
+
+        // ========================================================
+        // GYRO BIAS
+        // ========================================================
+
+        gyroBiasX =
+            intent.getDoubleExtra(
+                EXTRA_GYRO_BIAS_X,
+                Double.NaN
+            )
+
+
+        gyroBiasY =
+            intent.getDoubleExtra(
+                EXTRA_GYRO_BIAS_Y,
+                Double.NaN
+            )
+
+
+        gyroBiasZ =
+            intent.getDoubleExtra(
+                EXTRA_GYRO_BIAS_Z,
+                Double.NaN
+            )
+
+
+        gyroRms =
+            intent.getDoubleExtra(
+                EXTRA_GYRO_RMS,
+                -1.0
+            )
+
+
+        // ========================================================
+        // SENSOR AVAILABILITY
+        // ========================================================
+
+        sensorsAvailable =
+            intent.getBooleanExtra(
+                EXTRA_SENSORS_AVAILABLE,
+                false
+            )
+
+
+        gravityAvailable =
+            intent.getBooleanExtra(
+                EXTRA_GRAVITY_AVAILABLE,
+                false
+            )
+
+
+        accelerationAvailable =
+            intent.getBooleanExtra(
+                EXTRA_ACCELERATION_AVAILABLE,
+                false
+            )
+
+
+        gnssAvailable =
+            intent.getBooleanExtra(
+                EXTRA_GNSS_AVAILABLE,
+                false
+            )
+
+
+        autoAzimuthAvailable =
+            intent.getBooleanExtra(
+                EXTRA_AUTO_AZIMUTH_AVAILABLE,
+                false
+            )
+
+
+        // ========================================================
+        // GNSS REFINEMENT
+        // ========================================================
+
+        gnssAccuracyM =
+            readNullableDoubleExtra(
+                EXTRA_GNSS_ACCURACY_M
+            )
+
+
+        gnssSpeedMps =
+            readNullableDoubleExtra(
+                EXTRA_GNSS_SPEED_MPS
+            )
+
+
+        gnssValidSamples =
+            readNullableIntExtra(
+                EXTRA_GNSS_VALID_SAMPLES
+            )
+
+
+        // ========================================================
+        // AUTOMATIC AZIMUTH
+        // ========================================================
+
+        automaticAzimuthDeg =
+            readNullableDoubleExtra(
+                EXTRA_AUTOMATIC_AZIMUTH_DEG
+            )
+
+
+        azimuthResidualDeg =
+            readNullableDoubleExtra(
+                EXTRA_AZIMUTH_RESIDUAL_DEG
+            )
+
+
+        azimuthConsistency =
+            readNullableDoubleExtra(
+                EXTRA_AZIMUTH_CONSISTENCY
+            )
+    }
+
+
+    // ============================================================
+    // NULLABLE DOUBLE EXTRA
+    // ============================================================
+
+    private fun readNullableDoubleExtra(
+        key: String
+    ): Double? {
+
+        if (!intent.hasExtra(key)) {
+            return null
+        }
+
+        val value =
+            intent.getDoubleExtra(
+                key,
+                Double.NaN
+            )
+
+        return if (value.isFinite()) {
+            value
+        } else {
+            null
+        }
+    }
+
+
+    // ============================================================
+    // NULLABLE INT EXTRA
+    // ============================================================
+
+    private fun readNullableIntExtra(
+        key: String
+    ): Int? {
+
+        if (!intent.hasExtra(key)) {
+            return null
+        }
+
+        return intent.getIntExtra(
+            key,
+            -1
+        ).takeIf {
+            it >= 0
+        }
+    }
+
+
+    // ============================================================
+    // USE CALIBRATION
+    // ============================================================
+
+    private fun evaluateAndUseCalibration() {
+
+        val input =
+            buildQualityInput()
+
+        val result =
+            DvfcQualityEngine.evaluate(
+                input
+            )
+
+
+        if (
+            result.status == "READY" ||
+            result.status == "DEGRADED"
+        ) {
+
+            setResult(
+                RESULT_OK
+            )
+
+            finish()
+
+        } else {
+
+            status.text =
+                result.hardGateFailure
+                    ?: "VALIDATION REQUIRED"
+
+            status.setBackgroundResource(
+                R.drawable.bg_dvfc_status_chip_crit
+            )
+
+            hint.text =
+                "Calibration cannot be accepted yet. Complete the required evidence and try again."
+        }
+    }
+
+
+    // ============================================================
+    // BUILD QUALITY INPUT
+    // ============================================================
+
     private fun buildQualityInput(): DvfcQualityInput {
 
-        // =========================================================
-        // TIMESTAMP
-        // =========================================================
+        // ========================================================
+        // TIMESTAMP SYNC
+        // ========================================================
 
         val timestampState =
             when {
@@ -447,9 +736,9 @@ class DVFCQualityActivity : AppCompatActivity() {
             }
 
 
-        // =========================================================
+        // ========================================================
         // DATA GAPS
-        // =========================================================
+        // ========================================================
 
         val gapState =
             when {
@@ -468,14 +757,9 @@ class DVFCQualityActivity : AppCompatActivity() {
             }
 
 
-        // =========================================================
+        // ========================================================
         // RESAMPLING
-        // =========================================================
-        //
-        // IMPORTANT:
-        // Current SensorFusion does not expose a resampling stage.
-        // Therefore this is NOT claimed as PASS.
-        //
+        // ========================================================
 
         val resamplingState =
             when {
@@ -496,38 +780,25 @@ class DVFCQualityActivity : AppCompatActivity() {
                     EvidenceState.WARN
             }
 
-        // =========================================================
+
+        // ========================================================
         // UNIT NORMALIZATION
-        // =========================================================
-        //
-        // Current SensorFusion callback gives gyro values from
-        // Android's TYPE_GYROSCOPE contract.
-        //
-        // Android defines gyroscope values in rad/s.
-        //
-        // This is source-contract verification, not a runtime
-        // calibration measurement.
-        //
+        // ========================================================
 
         val unitState =
             if (sensorsAvailable) {
+
                 EvidenceState.PASS
+
             } else {
+
                 EvidenceState.WAITING
             }
 
 
-        // =========================================================
-        // MANUAL / GRAVITY LEVELING
-        // =========================================================
-
-        val manualState =
-            if (calibrationComplete) {
-                EvidenceState.PASS
-            } else {
-                EvidenceState.WAITING
-            }
-
+        // ========================================================
+        // GRAVITY
+        // ========================================================
 
         val gravityState =
             when {
@@ -553,9 +824,24 @@ class DVFCQualityActivity : AppCompatActivity() {
             }
 
 
-        // =========================================================
+        // ========================================================
+        // MANUAL ALIGNMENT
+        // ========================================================
+
+        val manualState =
+            if (calibrationComplete) {
+
+                EvidenceState.PASS
+
+            } else {
+
+                EvidenceState.WAITING
+            }
+
+
+        // ========================================================
         // GYRO BIAS
-        // =========================================================
+        // ========================================================
 
         val gyroBiasState =
             when {
@@ -574,9 +860,9 @@ class DVFCQualityActivity : AppCompatActivity() {
             }
 
 
-        // =========================================================
+        // ========================================================
         // MOUNT STABILITY
-        // =========================================================
+        // ========================================================
 
         val mountStabilityState =
             when {
@@ -595,9 +881,51 @@ class DVFCQualityActivity : AppCompatActivity() {
             }
 
 
-        // =========================================================
-        // CURRENT TRANSFORM
-        // =========================================================
+        // ========================================================
+        // MANUAL MOUNT AZIMUTH
+        // ========================================================
+
+        val mountAzimuthState =
+            if (calibrationComplete) {
+
+                EvidenceState.PASS
+
+            } else {
+
+                EvidenceState.WAITING
+            }
+
+
+        // ========================================================
+        // AUTOMATIC GNSS REFINEMENT
+        // ========================================================
+
+        val automaticRefinementState =
+            when {
+
+                !gnssAvailable ->
+                    EvidenceState.WAITING
+
+                !autoAzimuthAvailable ->
+                    EvidenceState.WAITING
+
+                automaticAzimuthDeg == null ->
+                    EvidenceState.WAITING
+
+                azimuthResidualDeg == null ->
+                    EvidenceState.WAITING
+
+                azimuthConsistency == null ->
+                    EvidenceState.WAITING
+
+                else ->
+                    EvidenceState.PASS
+            }
+
+
+        // ========================================================
+        // TRANSFORM
+        // ========================================================
 
         val transform =
             TransformEvidence(
@@ -637,11 +965,15 @@ class DVFCQualityActivity : AppCompatActivity() {
             )
 
 
-        // =========================================================
-        // RETURN
-        // =========================================================
+        // ========================================================
+        // RETURN FULL QUALITY INPUT
+        // ========================================================
 
         return DvfcQualityInput(
+
+            // ----------------------------------------------------
+            // ADAPTER
+            // ----------------------------------------------------
 
             adapter =
                 AdapterEvidence(
@@ -694,6 +1026,10 @@ class DVFCQualityActivity : AppCompatActivity() {
                 ),
 
 
+            // ----------------------------------------------------
+            // CALIBRATION
+            // ----------------------------------------------------
+
             calibration =
                 CalibrationEvidence(
 
@@ -707,42 +1043,59 @@ class DVFCQualityActivity : AppCompatActivity() {
                         gyroBiasState,
 
                     mountAzimuth =
-                        if (calibrationComplete) {
-                            EvidenceState.PASS
-                        } else {
-                            EvidenceState.WAITING
-                        },
+                        mountAzimuthState,
 
                     automaticRefinement =
-                        if (autoAzimuthAvailable) {
-                            EvidenceState.PASS
-                        } else {
-                            EvidenceState.WAITING
-                        },
+                        automaticRefinementState,
 
                     mountStability =
                         mountStabilityState
                 ),
 
 
+            // ----------------------------------------------------
+            // GNSS
+            // ----------------------------------------------------
+
             gnss =
                 GnssEvidence(
-                    accuracyM = null,
-                    speedMps = null,
-                    validSamples = null
+
+                    accuracyM =
+                        gnssAccuracyM,
+
+                    speedMps =
+                        gnssSpeedMps,
+
+                    validSamples =
+                        gnssValidSamples
                 ),
 
+
+            // ----------------------------------------------------
+            // EXCITATION
+            // ----------------------------------------------------
 
             excitation =
                 ExcitationEvidence(
-                    score = null,
-                    usableSamples = null,
-                    longitudinalAccelerationRms = null
+
+                    score =
+                        null,
+
+                    usableSamples =
+                        null,
+
+                    longitudinalAccelerationRms =
+                        null
                 ),
 
 
+            // ----------------------------------------------------
+            // AZIMUTH
+            // ----------------------------------------------------
+
             azimuth =
                 AzimuthEvidence(
+
                     manualEstimateDeg =
                         if (calibrationComplete) {
                             yawDeg
@@ -751,18 +1104,22 @@ class DVFCQualityActivity : AppCompatActivity() {
                         },
 
                     automaticEstimateDeg =
-                        null,
+                        automaticAzimuthDeg,
 
                     residualDeg =
-                        null,
+                        azimuthResidualDeg,
 
                     circularConsistency =
-                        null,
+                        azimuthConsistency,
 
                     validSamples =
-                        null
+                        gnssValidSamples
                 ),
 
+
+            // ----------------------------------------------------
+            // STABILITY
+            // ----------------------------------------------------
 
             stability =
                 StabilityEvidence(
@@ -778,7 +1135,16 @@ class DVFCQualityActivity : AppCompatActivity() {
                         stationarySamples,
 
                     gravityScore =
-                        null,
+                        if (
+                            gravityAvailable &&
+                            gravityMagnitude >= 0.0
+                        ) {
+
+                            gravityStabilityScore()
+
+                        } else {
+                            null
+                        },
 
                     gravityStd =
                         null,
@@ -791,12 +1157,48 @@ class DVFCQualityActivity : AppCompatActivity() {
                 ),
 
 
+            // ----------------------------------------------------
+            // TRANSFORM
+            // ----------------------------------------------------
+
             transform =
                 transform
         )
     }
 
 
+    // ============================================================
+    // GRAVITY SCORE
+    // ============================================================
+
+    private fun gravityStabilityScore(): Double {
+
+        if (!gravityMagnitude.isFinite()) {
+            return 0.0
+        }
+
+        val error =
+            kotlin.math.abs(
+                gravityMagnitude - 9.80665
+            )
+
+        return (
+                1.0 -
+                        (
+                                error /
+                                        2.0
+                                )
+                )
+            .coerceIn(
+                0.0,
+                1.0
+            )
+    }
+
+
+    // ============================================================
+    // RENDER
+    // ============================================================
 
     private fun render(
         input: DvfcQualityInput
@@ -807,19 +1209,45 @@ class DVFCQualityActivity : AppCompatActivity() {
                 input
             )
 
-        val waiting =
-            result.status == "WAITING FOR TELEMETRY"
+
+        // ========================================================
+        // SCORE
+        // ========================================================
+
+        val numericScore =
+            result.score
+                .coerceIn(
+                    0,
+                    100
+                )
+
+        /*
+         * IMPORTANT:
+         *
+         * Previous implementation displayed "—"
+         * whenever engine status was WAITING FOR TELEMETRY.
+         *
+         * That made the UI look broken.
+         *
+         * We always display the engine's numeric score.
+         */
 
         score.text =
-            if (waiting) {
-                "—"
-            } else {
-                result.score.toString()
-            }
+            numericScore.toString()
+
+
+        // ========================================================
+        // STATUS
+        // ========================================================
 
         status.text =
             result.hardGateFailure
                 ?: result.status
+
+
+        // ========================================================
+        // HINT
+        // ========================================================
 
         hint.text =
             statusHint(
@@ -827,56 +1255,92 @@ class DVFCQualityActivity : AppCompatActivity() {
                 result.hardGateFailure
             )
 
-        val (chipDrawable, gaugeColor) =
+
+        // ========================================================
+        // STATUS CHIP + GAUGE
+        // ========================================================
+
+        val (
+            chipDrawable,
+            gaugeColor
+        ) =
             when {
 
                 result.hardGateFailure != null ->
-                    R.drawable.bg_dvfc_status_chip_crit to R.color.crit
 
-                waiting ->
-                    R.drawable.bg_dvfc_status_chip_waiting to R.color.idle
+                    R.drawable.bg_dvfc_status_chip_crit to
+                            R.color.crit
+
 
                 result.status == "READY" ->
-                    R.drawable.bg_dvfc_status_chip_pass to R.color.good
+
+                    R.drawable.bg_dvfc_status_chip_pass to
+                            R.color.good
+
 
                 result.status == "DEGRADED" ->
-                    R.drawable.bg_dvfc_status_chip_warn to R.color.warn
+
+                    R.drawable.bg_dvfc_status_chip_warn to
+                            R.color.warn
+
+
+                result.status == "WAITING FOR TELEMETRY" ->
+
+                    R.drawable.bg_dvfc_status_chip_waiting to
+                            R.color.idle
+
 
                 else ->
-                    R.drawable.bg_dvfc_status_chip_crit to R.color.crit
+
+                    R.drawable.bg_dvfc_status_chip_crit to
+                            R.color.crit
             }
 
-        status.setBackgroundResource(chipDrawable)
+
+        status.setBackgroundResource(
+            chipDrawable
+        )
+
 
         gauge.setProgress(
-            value = if (waiting) 0 else result.score,
+            value = numericScore,
             colorRes = gaugeColor
         )
+
+
+        // ========================================================
+        // ADAPTER
+        // ========================================================
 
         bindState(
             R.id.adapterTimeSync,
             input.adapter.timestampSync
         )
 
+
         bindState(
             R.id.adapterUnits,
             input.adapter.units
         )
+
 
         bindState(
             R.id.adapterGaps,
             input.adapter.dataGaps
         )
 
+
         bindState(
             R.id.adapterResampling,
             input.adapter.resampling
         )
 
+
         bindState(
             R.id.adapterGravity,
             input.adapter.gravity
         )
+
 
         bindSectionDot(
             R.id.sectionDotAdapter,
@@ -889,35 +1353,46 @@ class DVFCQualityActivity : AppCompatActivity() {
             )
         )
 
+
+        // ========================================================
+        // CALIBRATION
+        // ========================================================
+
         bindState(
             R.id.scoreManual,
             input.calibration.manualAlignment
         )
+
 
         bindState(
             R.id.scoreGravity,
             input.calibration.gravityLeveling
         )
 
+
         bindState(
             R.id.scoreGyro,
             input.calibration.gyroBias
         )
+
 
         bindState(
             R.id.scoreAzimuth,
             input.calibration.mountAzimuth
         )
 
+
         bindState(
             R.id.scoreRefinement,
             input.calibration.automaticRefinement
         )
 
+
         bindState(
             R.id.scoreMount,
             input.calibration.mountStability
         )
+
 
         bindSectionDot(
             R.id.sectionDotCalibration,
@@ -931,44 +1406,64 @@ class DVFCQualityActivity : AppCompatActivity() {
             )
         )
 
+
+        // ========================================================
+        // GNSS
+        // ========================================================
+
         findViewById<TextView>(
             R.id.gnssAccuracy
         ).text =
             input.gnss.accuracyM?.let {
+
                 String.format(
                     Locale.US,
                     "%.1f m",
                     it
                 )
+
             } ?: "—"
+
 
         findViewById<TextView>(
             R.id.gnssSpeed
         ).text =
             input.gnss.speedMps?.let {
+
                 String.format(
                     Locale.US,
                     "%.2f m/s",
                     it
                 )
+
             } ?: "—"
+
 
         findViewById<TextView>(
             R.id.gnssSamples
         ).text =
-            input.gnss.validSamples?.toString()
+            input.gnss.validSamples
+                ?.toString()
                 ?: "—"
+
+
+        // ========================================================
+        // EXCITATION
+        // ========================================================
 
         findViewById<TextView>(
             R.id.excitationValue
         ).text =
             input.excitation.score?.let {
+
                 String.format(
                     Locale.US,
                     "%.2f",
                     it
                 )
+
             } ?: "—"
+
 
         findViewById<TextView>(
             R.id.excitationSamples
@@ -977,39 +1472,55 @@ class DVFCQualityActivity : AppCompatActivity() {
                 ?.toString()
                 ?: "—"
 
+
+        // ========================================================
+        // AZIMUTH
+        // ========================================================
+
         findViewById<TextView>(
             R.id.azimuthManual
         ).text =
             input.azimuth.manualEstimateDeg
-                ?.let { formatDeg(it) }
+                ?.let {
+                    formatDeg(it)
+                }
                 ?: "—"
+
 
         findViewById<TextView>(
             R.id.azimuthAutomatic
         ).text =
             input.azimuth.automaticEstimateDeg
-                ?.let { formatDeg(it) }
+                ?.let {
+                    formatDeg(it)
+                }
                 ?: "—"
+
 
         findViewById<TextView>(
             R.id.azimuthResidual
         ).text =
             input.azimuth.residualDeg
-                ?.let { formatDeg(it) }
+                ?.let {
+                    formatDeg(it)
+                }
                 ?: "—"
+
 
         findViewById<TextView>(
             R.id.azimuthConsistency
         ).text =
             input.azimuth.circularConsistency
                 ?.let {
+
                     String.format(
                         Locale.US,
                         "%.2f",
                         it
                     )
-                }
-                ?: "—"
+
+                } ?: "—"
+
 
         findViewById<TextView>(
             R.id.azimuthSamples
@@ -1018,18 +1529,25 @@ class DVFCQualityActivity : AppCompatActivity() {
                 ?.toString()
                 ?: "—"
 
+
+        // ========================================================
+        // STABILITY
+        // ========================================================
+
         findViewById<TextView>(
             R.id.stationaryScore
         ).text =
             input.stability.stationaryScore
                 ?.let {
+
                     String.format(
                         Locale.US,
                         "%.2f",
                         it
                     )
-                }
-                ?: "—"
+
+                } ?: "—"
+
 
         findViewById<TextView>(
             R.id.stationarySamples
@@ -1041,68 +1559,127 @@ class DVFCQualityActivity : AppCompatActivity() {
                                 ?: "—"
                             )
 
+
         findViewById<TextView>(
             R.id.gravityScore
         ).text =
             input.stability.gravityScore
                 ?.let {
+
                     String.format(
                         Locale.US,
                         "%.2f",
                         it
                     )
-                }
-                ?: "—"
+
+                } ?: "—"
+
+
+        // ========================================================
+        // MOUNT STATUS
+        // ========================================================
 
         val mountBanner =
-            findViewById<View>(R.id.mountBanner)
+            findViewById<View>(
+                R.id.mountBanner
+            )
+
 
         val mountStatusView =
-            findViewById<TextView>(R.id.mountStatus)
+            findViewById<TextView>(
+                R.id.mountStatus
+            )
+
 
         when (
             input.stability.mountChanged
         ) {
 
             true -> {
-                mountStatusView.text = "CHANGE CONFIRMED"
-                mountStatusView.setTextColor(getColor(R.color.crit))
-                mountBanner.setBackgroundResource(R.drawable.bg_dvfc_mount_banner_changed)
+
+                mountStatusView.text =
+                    "CHANGE CONFIRMED"
+
+                mountStatusView.setTextColor(
+                    getColor(
+                        R.color.crit
+                    )
+                )
+
+                mountBanner.setBackgroundResource(
+                    R.drawable.bg_dvfc_mount_banner_changed
+                )
             }
+
 
             false -> {
-                mountStatusView.text = "STABLE"
-                mountStatusView.setTextColor(getColor(R.color.good))
-                mountBanner.setBackgroundResource(R.drawable.bg_dvfc_mount_banner_stable)
+
+                mountStatusView.text =
+                    "STABLE"
+
+                mountStatusView.setTextColor(
+                    getColor(
+                        R.color.good
+                    )
+                )
+
+                mountBanner.setBackgroundResource(
+                    R.drawable.bg_dvfc_mount_banner_stable
+                )
             }
 
+
             null -> {
-                mountStatusView.text = "WAITING"
-                mountStatusView.setTextColor(getColor(R.color.fg_faint))
-                mountBanner.setBackgroundResource(R.drawable.bg_dvfc_mount_banner_waiting)
+
+                mountStatusView.text =
+                    "WAITING"
+
+                mountStatusView.setTextColor(
+                    getColor(
+                        R.color.fg_faint
+                    )
+                )
+
+                mountBanner.setBackgroundResource(
+                    R.drawable.bg_dvfc_mount_banner_waiting
+                )
             }
         }
+
+
+        // ========================================================
+        // FINAL TRANSFORM
+        // ========================================================
 
         findViewById<TextView>(
             R.id.finalYaw
         ).text =
             input.transform.yawDeg
-                ?.let { formatDeg(it) }
+                ?.let {
+                    formatDeg(it)
+                }
                 ?: "—"
+
 
         findViewById<TextView>(
             R.id.finalPitch
         ).text =
             input.transform.pitchDeg
-                ?.let { formatDeg(it) }
+                ?.let {
+                    formatDeg(it)
+                }
                 ?: "—"
+
 
         findViewById<TextView>(
             R.id.finalRoll
         ).text =
             input.transform.rollDeg
-                ?.let { formatDeg(it) }
+                ?.let {
+                    formatDeg(it)
+                }
                 ?: "—"
+
 
         findViewById<TextView>(
             R.id.finalBias
@@ -1125,8 +1702,14 @@ class DVFCQualityActivity : AppCompatActivity() {
                 )
 
             } else {
+
                 "—"
             }
+
+
+        // ========================================================
+        // USE BUTTON
+        // ========================================================
 
         findViewById<Button>(
             R.id.actionUseCalibration
@@ -1135,30 +1718,56 @@ class DVFCQualityActivity : AppCompatActivity() {
                     result.status == "DEGRADED"
     }
 
+
+    // ============================================================
+    // STATUS HINT
+    // ============================================================
+
     private fun statusHint(
         statusText: String,
         hardGateFailure: String?
     ): String {
 
-        if (hardGateFailure != null) {
+        if (
+            hardGateFailure != null
+        ) {
+
             return hardGateFailure
         }
+
 
         return when (statusText) {
 
             "READY" ->
-                "Meets the navigation launch threshold. Safe to use this calibration."
+
+                "Calibration meets the navigation launch threshold."
+
 
             "DEGRADED" ->
-                "Usable, but some evidence is below target. Consider recalibrating soon."
+
+                "Calibration is usable, but some evidence is below the preferred target."
+
 
             "INVALID" ->
-                "Below the minimum quality bar. Recalibration is required."
+
+                "Calibration is below the minimum quality threshold. Recalibration is required."
+
+
+            "WAITING FOR TELEMETRY" ->
+
+                "Collecting sensor, timing and calibration evidence."
+
 
             else ->
+
                 "Collecting evidence from the sensor adapter and calibration pipeline."
         }
     }
+
+
+    // ============================================================
+    // EVIDENCE STATE BINDING
+    // ============================================================
 
     private fun bindState(
         id: Int,
@@ -1166,7 +1775,10 @@ class DVFCQualityActivity : AppCompatActivity() {
     ) {
 
         val view =
-            findViewById<TextView>(id)
+            findViewById<TextView>(
+                id
+            )
+
 
         view.text =
             when (state) {
@@ -1184,69 +1796,121 @@ class DVFCQualityActivity : AppCompatActivity() {
                     "WAITING"
             }
 
-        val (chipDrawable, textColor) =
+
+        val (
+            chipDrawable,
+            textColor
+        ) =
             when (state) {
 
                 EvidenceState.PASS ->
-                    R.drawable.bg_dvfc_status_chip_pass to R.color.good
+
+                    R.drawable.bg_dvfc_status_chip_pass to
+                            R.color.good
+
 
                 EvidenceState.WARN ->
-                    R.drawable.bg_dvfc_status_chip_warn to R.color.warn
+
+                    R.drawable.bg_dvfc_status_chip_warn to
+                            R.color.warn
+
 
                 EvidenceState.FAIL ->
-                    R.drawable.bg_dvfc_status_chip_crit to R.color.crit
+
+                    R.drawable.bg_dvfc_status_chip_crit to
+                            R.color.crit
+
 
                 EvidenceState.WAITING ->
-                    R.drawable.bg_dvfc_status_chip_waiting to R.color.fg_faint
+
+                    R.drawable.bg_dvfc_status_chip_waiting to
+                            R.color.fg_faint
             }
 
-        view.setBackgroundResource(chipDrawable)
-        view.setTextColor(getColor(textColor))
+
+        view.setBackgroundResource(
+            chipDrawable
+        )
+
+
+        view.setTextColor(
+            getColor(
+                textColor
+            )
+        )
     }
 
-    /**
-     * Colors a section-header dot with the worst evidence state among its
-     * rows: any FAIL wins, else any WARN, else PASS only if every row has
-     * reported in, otherwise the section is still WAITING.
-     */
+
+    // ============================================================
+    // SECTION DOT
+    // ============================================================
+
     private fun bindSectionDot(
         id: Int,
         states: List<EvidenceState>
     ) {
 
-        val worst = when {
+        val worst =
+            when {
 
-            states.any { it == EvidenceState.FAIL } ->
-                EvidenceState.FAIL
+                states.any {
+                    it == EvidenceState.FAIL
+                } ->
+                    EvidenceState.FAIL
 
-            states.any { it == EvidenceState.WARN } ->
-                EvidenceState.WARN
 
-            states.all { it == EvidenceState.PASS } ->
-                EvidenceState.PASS
+                states.any {
+                    it == EvidenceState.WARN
+                } ->
+                    EvidenceState.WARN
 
-            else ->
-                EvidenceState.WAITING
-        }
 
-        val dotDrawable = when (worst) {
+                states.all {
+                    it == EvidenceState.PASS
+                } ->
+                    EvidenceState.PASS
 
-            EvidenceState.PASS ->
-                R.drawable.bg_dvfc_section_dot_pass
 
-            EvidenceState.WARN ->
-                R.drawable.bg_dvfc_section_dot_warn
+                else ->
+                    EvidenceState.WAITING
+            }
 
-            EvidenceState.FAIL ->
-                R.drawable.bg_dvfc_section_dot_crit
 
-            EvidenceState.WAITING ->
-                R.drawable.bg_dvfc_section_dot_waiting
-        }
+        val dotDrawable =
+            when (worst) {
 
-        findViewById<View>(id)
-            .setBackgroundResource(dotDrawable)
+                EvidenceState.PASS ->
+
+                    R.drawable.bg_dvfc_section_dot_pass
+
+
+                EvidenceState.WARN ->
+
+                    R.drawable.bg_dvfc_section_dot_warn
+
+
+                EvidenceState.FAIL ->
+
+                    R.drawable.bg_dvfc_section_dot_crit
+
+
+                EvidenceState.WAITING ->
+
+                    R.drawable.bg_dvfc_section_dot_waiting
+            }
+
+
+        findViewById<View>(
+            id
+        ).setBackgroundResource(
+            dotDrawable
+        )
     }
+
+
+    // ============================================================
+    // FORMAT DEGREES
+    // ============================================================
 
     private fun formatDeg(
         value: Double

@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res/auto"
+    xmlns:app2="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/ink_900"
@@ -26,7 +27,7 @@
                 android:layout_width="34dp"
                 android:layout_height="30dp"
                 android:src="@drawable/astranav_logo"
-                app:tint="@color/cyan" />
+                app2:tint="@color/cyan" />
 
             <LinearLayout
                 android:layout_width="0dp"
@@ -66,7 +67,7 @@
                     android:layout_height="18dp"
                     android:layout_gravity="center"
                     android:src="@drawable/ic_info"
-                    app:tint="@color/fg_dim" />
+                    app2:tint="@color/fg_dim" />
             </FrameLayout>
         </LinearLayout>
 
@@ -132,7 +133,7 @@
                     android:layout_width="18dp"
                     android:layout_height="18dp"
                     android:src="@drawable/ic_chevron_right"
-                    app:tint="@color/fg_faint" />
+                    app2:tint="@color/fg_faint" />
             </LinearLayout>
 
             <!-- Live indicator chips: GNSS / IMU / AI / DVFC -->
@@ -696,7 +697,7 @@
                     android:layout_height="13dp"
                     android:layout_marginStart="4dp"
                     android:src="@drawable/ic_chevron_right"
-                    app:tint="@color/cyan" />
+                    app2:tint="@color/cyan" />
             </LinearLayout>
         </LinearLayout>
     </LinearLayout>

@@ -1,12 +1,30 @@
 package com.rishabh.astranav.dvfc
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import android.location.Location
+import android.os.Looper
+
+import androidx.core.app.ActivityCompat
+
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationResult
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
+
+import com.rishabh.astranav.dvfc.gnss.GnssAzimuthEstimator
 import com.rishabh.astranav.dvfc.math.DeviceVehicleTransform
 import com.rishabh.astranav.dvfc.math.Quat
+import com.rishabh.astranav.dvfc.sensor.DeviceOrientationSample
 import com.rishabh.astranav.dvfc.sensor.SensorFusion
 import com.rishabh.astranav.dvfc.sensor.StabilityDetector
+
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+
 import kotlin.math.sqrt
 
 
@@ -149,11 +167,29 @@ data class DvfcUiState(
         false,
 
     // =========================================================
-    // FUTURE / NOT CONNECTED YET
+    // GNSS / AZIMUTH TELEMETRY
     // =========================================================
 
     val gnssAvailable: Boolean =
         false,
+
+    val gnssAccuracyM: Double? =
+        null,
+
+    val gnssSpeedMps: Double? =
+        null,
+
+    val gnssValidSamples: Int? =
+        null,
+
+    val automaticAzimuthDeg: Double? =
+        null,
+
+    val azimuthResidualDeg: Double? =
+        null,
+
+    val azimuthConsistency: Double? =
+        null,
 
     val automaticAzimuthAvailable: Boolean =
         false
@@ -164,29 +200,8 @@ data class DvfcUiState(
 // DVFC CONTROLLER
 // =============================================================
 
-/**
- * Device → Vehicle Frame Calibration controller.
- *
- * Responsibilities:
- *
- * - Run DVFC calibration state machine
- * - Maintain live orientation telemetry
- * - Monitor stationary stability
- * - Estimate stationary gyro bias
- * - Monitor sensor timestamp spacing
- * - Detect timestamp gaps
- * - Expose diagnostics to DVFCQualityActivity
- *
- * Important:
- *
- * This controller does NOT fabricate GNSS, gravity,
- * acceleration or automatic azimuth evidence.
- *
- * Those values remain unavailable until the corresponding
- * sensor/measurement pipeline is actually connected.
- */
 class DVFCController(
-    context: Context
+    private val context: Context
 ) {
 
     // =========================================================
@@ -199,7 +214,6 @@ class DVFCController(
     private val transform =
         DeviceVehicleTransform()
 
-
     // =========================================================
     // CALIBRATION STATE
     // =========================================================
@@ -210,63 +224,8 @@ class DVFCController(
     private var validatingSinceNs =
         0L
 
-
     // =========================================================
-    // TIMESTAMP DIAGNOSTICS
-    // =========================================================
-
-    private var previousTimestampNs =
-        0L
-
-    private var timestampSampleCount =
-        0
-
-    private var timestampDtSumMs =
-        0.0
-
-    private var timestampDtSquaredSumMs =
-        0.0
-
-    private var timestampMaxDtMs =
-        0.0
-
-    private var timestampGapCount =
-        0
-
-    /*
-     * Current diagnostic reference cadence.
-     *
-     * This does NOT force Android sensors to run at 50 Hz.
-     *
-     * It is only used for detecting unusually large
-     * timestamp gaps in the incoming sensor stream.
-     */
-    private val expectedPeriodMs =
-        20.0
-
-
-    // =========================================================
-    // STATIONARY / GYRO DIAGNOSTICS
-    // =========================================================
-
-    private var stationarySampleCount =
-        0
-
-    private var gyroBiasSumX =
-        0.0
-
-    private var gyroBiasSumY =
-        0.0
-
-    private var gyroBiasSumZ =
-        0.0
-
-    private var gyroMagnitudeSquaredSum =
-        0.0
-
-
-    // =========================================================
-    // STATE FLOW
+    // STATE
     // =========================================================
 
     private val _state =
@@ -277,7 +236,6 @@ class DVFCController(
     val state: StateFlow<DvfcUiState> =
         _state
 
-
     // =========================================================
     // SENSOR FUSION
     // =========================================================
@@ -286,10 +244,57 @@ class DVFCController(
         SensorFusion(context) { sample ->
 
             onSample(
-                sample = sample
+                sample
             )
         }
 
+    // =========================================================
+    // GNSS / AZIMUTH
+    // =========================================================
+
+    private val gnssAzimuthEstimator =
+        GnssAzimuthEstimator()
+
+    private val fusedLocationClient:
+            FusedLocationProviderClient =
+        LocationServices
+            .getFusedLocationProviderClient(
+                context
+            )
+
+    private var latestYawDeg =
+        0.0
+
+    private var lastGyroTimestampNs =
+        0L
+
+    private var gnssStarted =
+        false
+
+    private var sensorStarted =
+        false
+
+    // =========================================================
+    // GNSS CALLBACK
+    // =========================================================
+
+    private val locationCallback =
+        object : LocationCallback() {
+
+            override fun onLocationResult(
+                result: LocationResult
+            ) {
+
+                for (
+                location in result.locations
+                ) {
+
+                    handleGnssLocation(
+                        location
+                    )
+                }
+            }
+        }
 
     // =========================================================
     // START
@@ -297,23 +302,151 @@ class DVFCController(
 
     fun start() {
 
-        resetDiagnostics()
+        /*
+         * IMPORTANT:
+         *
+         * Do not reset the entire calibration every time
+         * Activity resumes.
+         *
+         * Quality screen can be opened while this controller
+         * continues to live.
+         */
+        if (!sensorStarted) {
 
-        _state.value =
-            DvfcUiState(
-                sensorsAvailable =
-                    fusion.isAvailable,
+            sensorStarted =
+                true
 
-                status =
-                    CalibrationStatus.STABILIZING,
+            resetDiagnostics()
 
-                transformLocked =
-                    transform.lockedTransform != null
-            )
+            _state.value =
+                _state.value.copy(
 
-        fusion.start()
+                    sensorsAvailable =
+                        fusion.isAvailable,
+
+                    status =
+                        CalibrationStatus.STABILIZING,
+
+                    transformLocked =
+                        transform.lockedTransform != null
+                )
+
+            fusion.start()
+        }
+
+        startGnss()
     }
 
+    // =========================================================
+    // GNSS START
+    // =========================================================
+
+    fun refreshGnssPermission() {
+
+        startGnss()
+    }
+
+    private fun startGnss() {
+
+        if (gnssStarted) {
+            return
+        }
+
+        val fineGranted =
+            ActivityCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) ==
+                    PackageManager.PERMISSION_GRANTED
+
+        val coarseGranted =
+            ActivityCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            ) ==
+                    PackageManager.PERMISSION_GRANTED
+
+        if (
+            !fineGranted &&
+            !coarseGranted
+        ) {
+
+            return
+        }
+
+        val request =
+            LocationRequest.Builder(
+                Priority.PRIORITY_HIGH_ACCURACY,
+                1000L
+            )
+                .setMinUpdateIntervalMillis(
+                    500L
+                )
+                .setWaitForAccurateLocation(
+                    false
+                )
+                .build()
+
+        fusedLocationClient
+            .requestLocationUpdates(
+                request,
+                locationCallback,
+                Looper.getMainLooper()
+            )
+
+        gnssStarted =
+            true
+    }
+
+    // =========================================================
+    // GNSS LOCATION
+    // =========================================================
+
+    private fun handleGnssLocation(
+        location: Location
+    ) {
+
+        val result =
+            gnssAzimuthEstimator
+                .updateLocation(
+                    location =
+                        location,
+
+                    deviceYawDeg =
+                        latestYawDeg
+                )
+
+        val current =
+            _state.value
+
+        _state.value =
+            current.copy(
+
+                gnssAvailable =
+                    result.gnssAvailable,
+
+                gnssAccuracyM =
+                    result.accuracyM,
+
+                gnssSpeedMps =
+                    result.speedMps,
+
+                gnssValidSamples =
+                    result.validSamples,
+
+                automaticAzimuthDeg =
+                    result.automaticAzimuthDeg,
+
+                azimuthResidualDeg =
+                    result.residualDeg,
+
+                azimuthConsistency =
+                    result.circularConsistency,
+
+                automaticAzimuthAvailable =
+                    result.ready
+            )
+    }
 
     // =========================================================
     // STOP
@@ -321,16 +454,39 @@ class DVFCController(
 
     fun stop() {
 
-        fusion.stop()
-    }
+        /*
+         * Stop both streams.
+         *
+         * Activity can call start() again and the same
+         * controller will resume without losing locked
+         * transform.
+         */
+        if (sensorStarted) {
 
+            fusion.stop()
+
+            sensorStarted =
+                false
+        }
+
+        if (gnssStarted) {
+
+            fusedLocationClient
+                .removeLocationUpdates(
+                    locationCallback
+                )
+
+            gnssStarted =
+                false
+        }
+    }
 
     // =========================================================
     // SENSOR SAMPLE
     // =========================================================
 
     private fun onSample(
-        sample: com.rishabh.astranav.dvfc.sensor.DeviceOrientationSample
+        sample: DeviceOrientationSample
     ) {
 
         val q =
@@ -342,47 +498,40 @@ class DVFCController(
         val timestampNs =
             sample.timestampNs
 
-        // ---------------------------------------------------------
-        // BASIC INPUT VALIDATION
-        // ---------------------------------------------------------
-
-        if (angularVelocity.size < 3) {
+        if (
+            angularVelocity.size < 3
+        ) {
             return
         }
 
-        // ---------------------------------------------------------
+        // =====================================================
         // ORIENTATION
-        // ---------------------------------------------------------
+        // =====================================================
 
         val euler =
             q.toEulerDegrees()
 
-        val headingOffset =
-            transform.headingOffsetDegrees(
-                q,
-                vehicleHeadingDeg
-            )
+        val rollDeg =
+            euler.getOrElse(0) {
+                0f
+            }
 
-        // ---------------------------------------------------------
-        // IMPORTANT:
-        //
-        // SensorAdapter already calculates:
-        //
-        // - sample rate
-        // - timestamp jitter
-        // - data gaps
-        // - duplicate timestamps
-        // - resampling
-        // - gravity stability
-        // - gravity leveling
-        //
-        // Therefore DVFCController must NOT recalculate
-        // those values using its own 20 ms / 50 Hz assumption.
-        // ---------------------------------------------------------
+        val pitchDeg =
+            euler.getOrElse(1) {
+                0f
+            }
 
-        // ---------------------------------------------------------
-        // GYRO VALUES
-        // ---------------------------------------------------------
+        val yawDeg =
+            euler.getOrElse(2) {
+                0f
+            }
+
+        latestYawDeg =
+            yawDeg.toDouble()
+
+        // =====================================================
+        // GYRO
+        // =====================================================
 
         val gyroX =
             angularVelocity
@@ -402,6 +551,38 @@ class DVFCController(
                 ?.toDouble()
                 ?: 0.0
 
+        // =====================================================
+        // GYRO → GNSS HEADING CONSISTENCY
+        // =====================================================
+
+        if (
+            lastGyroTimestampNs != 0L
+        ) {
+
+            val dtSec =
+                (
+                        timestampNs -
+                                lastGyroTimestampNs
+                        ) /
+                        1_000_000_000.0
+
+            gnssAzimuthEstimator
+                .updateGyro(
+                    yawRateRadPerSec =
+                        gyroZ,
+
+                    dtSec =
+                        dtSec
+                )
+        }
+
+        lastGyroTimestampNs =
+            timestampNs
+
+        // =====================================================
+        // GYRO MAGNITUDE
+        // =====================================================
+
         val gyroMagnitude =
             sqrt(
                 gyroX * gyroX +
@@ -409,18 +590,24 @@ class DVFCController(
                         gyroZ * gyroZ
             )
 
-        // ---------------------------------------------------------
+        // =====================================================
+        // VEHICLE HEADING / TRANSFORM
+        // =====================================================
+
+        val headingOffset =
+            transform.headingOffsetDegrees(
+                q,
+                vehicleHeadingDeg
+            )
+
+        // =====================================================
         // STABILITY
-        // ---------------------------------------------------------
+        // =====================================================
 
         val stable =
             stability.update(
                 angularVelocity
             )
-
-        // ---------------------------------------------------------
-        // STATIONARY GYRO COLLECTION
-        // ---------------------------------------------------------
 
         if (stable) {
 
@@ -440,15 +627,21 @@ class DVFCController(
                         gyroMagnitude
         }
 
+        // =====================================================
+        // CURRENT STATE
+        // =====================================================
+
         val current =
             _state.value
 
-        // =========================================================
+        // =====================================================
         // CALIBRATION STATE MACHINE
-        // =========================================================
+        // =====================================================
 
         val nextStatus =
-            when (current.status) {
+            when (
+                current.status
+            ) {
 
                 // -------------------------------------------------
                 // STABILIZING
@@ -473,22 +666,13 @@ class DVFCController(
                 CalibrationStatus.ALIGNING -> {
 
                     /*
-                     * CURRENT IMPLEMENTATION:
+                     * Provisional heading.
                      *
-                     * Device yaw is used as the provisional vehicle
-                     * heading.
-                     *
-                     * This is NOT GNSS COG refinement.
-                     *
-                     * Automatic mount azimuth refinement remains
-                     * unavailable until the GNSS-motion pipeline
-                     * is connected.
+                     * This is replaced/refined by the real
+                     * GNSS COG + gyro estimator separately.
                      */
-
                     vehicleHeadingDeg =
-                        euler.getOrElse(2) {
-                            0f
-                        }
+                        yawDeg
 
                     transform.calibrate(
                         q,
@@ -507,18 +691,16 @@ class DVFCController(
 
                 CalibrationStatus.VALIDATING -> {
 
-                    val stillStable =
-                        stable
-
                     val elapsedMs =
                         (
                                 timestampNs -
                                         validatingSinceNs
-                                ) / 1_000_000L
+                                ) /
+                                1_000_000L
 
                     when {
 
-                        !stillStable -> {
+                        !stable -> {
 
                             transform.reset()
 
@@ -550,9 +732,59 @@ class DVFCController(
                 }
             }
 
-        // =========================================================
-        // UPDATE LIVE STATE
-        // =========================================================
+        // =====================================================
+        // LINEAR ACCELERATION
+        // =====================================================
+
+        val linearAcceleration =
+            sample.linearAcceleration
+
+        val linearAccelerationMagnitude =
+            sqrt(
+
+                (
+                        linearAcceleration
+                            .getOrNull(0)
+                            ?.toDouble()
+                            ?: 0.0
+                        ) *
+                        (
+                                linearAcceleration
+                                    .getOrNull(0)
+                                    ?.toDouble()
+                                    ?: 0.0
+                                ) +
+
+                        (
+                                linearAcceleration
+                                    .getOrNull(1)
+                                    ?.toDouble()
+                                    ?: 0.0
+                                ) *
+                        (
+                                linearAcceleration
+                                    .getOrNull(1)
+                                    ?.toDouble()
+                                    ?: 0.0
+                                ) +
+
+                        (
+                                linearAcceleration
+                                    .getOrNull(2)
+                                    ?.toDouble()
+                                    ?: 0.0
+                                ) *
+                        (
+                                linearAcceleration
+                                    .getOrNull(2)
+                                    ?.toDouble()
+                                    ?: 0.0
+                                )
+            )
+
+        // =====================================================
+        // UPDATE STATE
+        // =====================================================
 
         _state.value =
             current.copy(
@@ -569,19 +801,13 @@ class DVFCController(
                 // -------------------------------------------------
 
                 rollDeg =
-                    euler.getOrElse(0) {
-                        0f
-                    },
+                    rollDeg,
 
                 pitchDeg =
-                    euler.getOrElse(1) {
-                        0f
-                    },
+                    pitchDeg,
 
                 yawDeg =
-                    euler.getOrElse(2) {
-                        0f
-                    },
+                    yawDeg,
 
                 headingOffsetDeg =
                     headingOffset,
@@ -609,17 +835,8 @@ class DVFCController(
                     sample.rotationVectorAvailable,
 
                 // -------------------------------------------------
-                // SENSOR ADAPTER TELEMETRY
+                // SENSOR ADAPTER
                 // -------------------------------------------------
-
-                /*
-                 * IMPORTANT:
-                 *
-                 * These values come directly from SensorAdapter.
-                 *
-                 * Do NOT use timestampSampleCount,
-                 * timestampGapCount etc. here.
-                 */
 
                 sampleCount =
                     current.sampleCount + 1,
@@ -630,11 +847,15 @@ class DVFCController(
 
                 averageSamplePeriodMs =
                     if (
-                        sample.estimatedSampleHz > 0f
+                        sample.estimatedSampleHz >
+                        0f
                     ) {
+
                         1000.0 /
                                 sample.estimatedSampleHz
+
                     } else {
+
                         null
                     },
 
@@ -657,11 +878,15 @@ class DVFCController(
 
                 resamplingRateHz =
                     if (
-                        sample.resamplingRateHz > 0f
+                        sample.resamplingRateHz >
+                        0f
                     ) {
+
                         sample.resamplingRateHz
                             .toDouble()
+
                     } else {
+
                         null
                     },
 
@@ -689,46 +914,7 @@ class DVFCController(
                 // -------------------------------------------------
 
                 linearAccelerationMagnitude =
-                    sqrt(
-                        (
-                                sample.linearAcceleration
-                                    .getOrNull(0)
-                                    ?.toDouble()
-                                    ?: 0.0
-                                ) *
-                                (
-                                        sample.linearAcceleration
-                                            .getOrNull(0)
-                                            ?.toDouble()
-                                            ?: 0.0
-                                        ) +
-
-                                (
-                                        sample.linearAcceleration
-                                            .getOrNull(1)
-                                            ?.toDouble()
-                                            ?: 0.0
-                                        ) *
-                                (
-                                        sample.linearAcceleration
-                                            .getOrNull(1)
-                                            ?.toDouble()
-                                            ?: 0.0
-                                        ) +
-
-                                (
-                                        sample.linearAcceleration
-                                            .getOrNull(2)
-                                            ?.toDouble()
-                                            ?: 0.0
-                                        ) *
-                                (
-                                        sample.linearAcceleration
-                                            .getOrNull(2)
-                                            ?.toDouble()
-                                            ?: 0.0
-                                        )
-                    ),
+                    linearAccelerationMagnitude,
 
                 // -------------------------------------------------
                 // STATIONARY
@@ -761,218 +947,61 @@ class DVFCController(
                 // -------------------------------------------------
 
                 transformLocked =
-                    transform.lockedTransform != null,
-
-                // -------------------------------------------------
-                // NOT CONNECTED YET
-                // -------------------------------------------------
+                    transform.lockedTransform != null
 
                 /*
-                 * These remain false until real GNSS and automatic
-                 * azimuth pipelines are connected.
+                 * IMPORTANT:
+                 *
+                 * DO NOT write:
+                 *
+                 * gnssAvailable = false
+                 * automaticAzimuthAvailable = false
+                 *
+                 * here.
+                 *
+                 * GNSS callback owns those values.
                  */
-
-                gnssAvailable =
-                    false,
-
-                automaticAzimuthAvailable =
-                    false
             )
     }
 
-
     // =========================================================
-    // TIMESTAMP DIAGNOSTICS
+    // STATIONARY / GYRO DIAGNOSTICS
     // =========================================================
 
-    private fun updateTimestampDiagnostics(
-        timestampNs: Long
-    ) {
+    private var stationarySampleCount =
+        0
 
-        /*
-         * First sample establishes the reference timestamp.
-         */
-        if (
-            previousTimestampNs == 0L
-        ) {
+    private var gyroBiasSumX =
+        0.0
 
-            previousTimestampNs =
-                timestampNs
+    private var gyroBiasSumY =
+        0.0
 
-            return
-        }
+    private var gyroBiasSumZ =
+        0.0
 
-
-        val dtMs =
-            (
-                    timestampNs -
-                            previousTimestampNs
-                    ) / 1_000_000.0
-
-
-        previousTimestampNs =
-            timestampNs
-
-
-        /*
-         * Ignore invalid or backwards timestamps.
-         */
-        if (
-            dtMs <= 0.0
-        ) {
-            return
-        }
-
-
-        timestampSampleCount++
-
-
-        timestampDtSumMs +=
-            dtMs
-
-
-        timestampDtSquaredSumMs +=
-            dtMs * dtMs
-
-
-        timestampMaxDtMs =
-            maxOf(
-                timestampMaxDtMs,
-                dtMs
-            )
-
-
-        /*
-         * Diagnostic gap:
-         *
-         * > 3 × expected period.
-         *
-         * At 50 Hz:
-         *
-         * expected = 20 ms
-         * gap      > 60 ms
-         */
-        if (
-            dtMs >
-            expectedPeriodMs * 3.0
-        ) {
-
-            timestampGapCount++
-        }
-    }
-
-
-    private fun averageTimestampPeriodMs():
-            Double? {
-
-        if (
-            timestampSampleCount <= 0
-        ) {
-            return null
-        }
-
-        return timestampDtSumMs /
-                timestampSampleCount
-    }
-
-
-    private fun estimatedSampleHz():
-            Double? {
-
-        val period =
-            averageTimestampPeriodMs()
-                ?: return null
-
-        if (
-            period <= 0.0
-        ) {
-            return null
-        }
-
-        return 1000.0 /
-                period
-    }
-
-
-    private fun timestampJitterMs():
-            Double? {
-
-        if (
-            timestampSampleCount <= 1
-        ) {
-            return null
-        }
-
-
-        val mean =
-            timestampDtSumMs /
-                    timestampSampleCount
-
-
-        val meanSquare =
-            timestampDtSquaredSumMs /
-                    timestampSampleCount
-
-
-        val variance =
-            (
-                    meanSquare -
-                            mean * mean
-                    ).coerceAtLeast(
-                    0.0
-                )
-
-
-        return sqrt(
-            variance
-        )
-    }
-
-
-    private fun timestampMaxGapMs():
-            Double? {
-
-        if (
-            timestampSampleCount <= 0
-        ) {
-            return null
-        }
-
-        return timestampMaxDtMs
-    }
-
-
-    // =========================================================
-    // STATIONARY DIAGNOSTICS
-    // =========================================================
+    private var gyroMagnitudeSquaredSum =
+        0.0
 
     private fun stationaryScore():
             Double? {
 
-        if (
-            timestampSampleCount <= 0
-        ) {
+        val total =
+            _state.value.sampleCount
+
+        if (total <= 0) {
             return null
         }
 
-
-        val ratio =
-            stationarySampleCount
-                .toDouble() /
-                    timestampSampleCount
-                        .toDouble()
-
-
-        return ratio.coerceIn(
-            0.0,
-            1.0
-        )
+        return (
+                stationarySampleCount
+                    .toDouble() /
+                        total.toDouble()
+                ).coerceIn(
+                0.0,
+                1.0
+            )
     }
-
-
-    // =========================================================
-    // GYRO BIAS
-    // =========================================================
 
     private fun gyroBiasX():
             Double? {
@@ -987,7 +1016,6 @@ class DVFCController(
                 stationarySampleCount
     }
 
-
     private fun gyroBiasY():
             Double? {
 
@@ -1001,7 +1029,6 @@ class DVFCController(
                 stationarySampleCount
     }
 
-
     private fun gyroBiasZ():
             Double? {
 
@@ -1014,7 +1041,6 @@ class DVFCController(
         return gyroBiasSumZ /
                 stationarySampleCount
     }
-
 
     private fun gyroMagnitudeRms():
             Double? {
@@ -1031,34 +1057,32 @@ class DVFCController(
         )
     }
 
-
     // =========================================================
-    // RESET DIAGNOSTICS
+    // RESET
     // =========================================================
 
     private fun resetDiagnostics() {
 
-        previousTimestampNs =
+        stationarySampleCount =
+            0
+
+        gyroBiasSumX =
+            0.0
+
+        gyroBiasSumY =
+            0.0
+
+        gyroBiasSumZ =
+            0.0
+
+        gyroMagnitudeSquaredSum =
+            0.0
+
+        lastGyroTimestampNs =
             0L
 
-        timestampSampleCount =
-            0
-
-        timestampDtSumMs =
-            0.0
-
-        timestampDtSquaredSumMs =
-            0.0
-
-        timestampMaxDtMs =
-            0.0
-
-        timestampGapCount =
-            0
-
-        resetCalibrationDiagnostics()
+        gnssAzimuthEstimator.reset()
     }
-
 
     private fun resetCalibrationDiagnostics() {
 
@@ -1078,25 +1102,18 @@ class DVFCController(
             0.0
     }
 
-
     // =========================================================
     // TRANSFORM HAND-OFF
     // =========================================================
 
-    /**
-     * Returns the locked Device → Vehicle transform.
-     *
-     * Null until calibration is actually locked.
-     */
     fun lockedDeviceToVehicleTransform():
             Quat? {
 
         return transform.lockedTransform
     }
 
-
     // =========================================================
-    // RECALIBRATION
+    // RECALIBRATE
     // =========================================================
 
     fun recalibrate() {
@@ -1120,10 +1137,54 @@ class DVFCController(
                     CalibrationStatus.STABILIZING,
 
                 transformLocked =
-                    false
+                    false,
+
+                gnssAvailable =
+                    false,
+
+                gnssAccuracyM =
+                    null,
+
+                gnssSpeedMps =
+                    null,
+
+                gnssValidSamples =
+                    0,
+
+                automaticAzimuthDeg =
+                    null,
+
+                azimuthResidualDeg =
+                    null,
+
+                azimuthConsistency =
+                    null,
+
+                automaticAzimuthAvailable =
+                    false,
+
+                sampleCount =
+                    0,
+
+                stationarySampleCount =
+                    0,
+
+                stationaryScore =
+                    null,
+
+                gyroBiasX =
+                    null,
+
+                gyroBiasY =
+                    null,
+
+                gyroBiasZ =
+                    null,
+
+                gyroMagnitudeRms =
+                    null
             )
     }
-
 
     // =========================================================
     // CONSTANTS
