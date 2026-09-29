@@ -443,14 +443,27 @@ class AstraMotionEngine(context: Context) {
                     // RAW OUTPUTS
                     // -------------------------------------------------
 
-                    val rawOutputs =
-                        outputs.map { output ->
+                    val rawOutputs = outputs.map { output ->
 
-                            OnnxModelUtils
-                                .flattenOutput(
-                                    output.value
-                                )
-                        }
+                        val name = output.key
+                        val onnxValue = output.value
+
+                        Log.d(
+                            TAG,
+                            "OUTPUT RAW name=$name type=${onnxValue.javaClass.name} " +
+                                    "onnxType=${onnxValue.type}"
+                        )
+
+                        val values = OnnxModelUtils.flattenOutput(onnxValue)
+
+                        Log.d(
+                            TAG,
+                            "OUTPUT DATA name=$name size=${values.size} " +
+                                    "values=${values.take(20).joinToString(", ")}"
+                        )
+
+                        values
+                    }
 
                     // -------------------------------------------------
                     // VALIDATION
@@ -519,6 +532,42 @@ class AstraMotionEngine(context: Context) {
                         )
                     )
 
+                    val rawOutputsByName = linkedMapOf<String, FloatArray>()
+
+                    outputs.forEach { output ->
+
+                        val name = output.key
+                        val onnxValue = output.value
+
+                        Log.d(
+                            TAG,
+                            "OUTPUT RAW name=$name " +
+                                    "class=${onnxValue.javaClass.name} " +
+                                    "type=${onnxValue.type}"
+                        )
+
+                        val values = OnnxModelUtils.flattenOutput(onnxValue)
+
+                        rawOutputsByName[name] = values
+
+                        Log.d(
+                            TAG,
+                            "OUTPUT DATA name=$name " +
+                                    "size=${values.size} " +
+                                    "values=${values.take(20).joinToString(", ")}"
+                        )
+
+                        val rawOutputs = rawOutputsByName.values.toList()
+
+                        val valid =
+                            rawOutputs.isNotEmpty() &&
+                                    rawOutputs.all { values ->
+                                        values.isNotEmpty() &&
+                                                values.all { it.isFinite() }
+                                    }
+                    }
+
+
                     /*
                      * IMPORTANT:
                      *
@@ -570,6 +619,9 @@ class AstraMotionEngine(context: Context) {
 
             return null
         }
+
+
+
     }
 
     /**
