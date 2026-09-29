@@ -77,6 +77,14 @@ class Eskf(
             nisGate = 11.34
         )
 
+    private val gnssUpdate =
+        EskfGnssUpdate(
+            positionStdM = 5.0,
+            velocityStdMps = 1.5,
+            positionNisGate = 16.27,
+            velocityNisGate = 16.27
+        )
+
     /*
      * ------------------------------------------------------------------
      * Diagnostics counters
@@ -95,6 +103,12 @@ class Eskf(
     private var acceptedZaruCount = 0L
     private var rejectedZaruCount = 0L
 
+    private var acceptedGnssPositionCount = 0L
+    private var rejectedGnssPositionCount = 0L
+
+    private var acceptedGnssVelocityCount = 0L
+    private var rejectedGnssVelocityCount = 0L
+
     private var lastPredictionResult:
             EskfPrediction.PredictionResult? = null
 
@@ -106,6 +120,12 @@ class Eskf(
 
     private var lastZaruResult:
             EskfZaruUpdate.UpdateResult? = null
+
+    private var lastGnssPositionResult:
+            EskfGnssUpdate.PositionUpdateResult? = null
+
+    private var lastGnssVelocityResult:
+            EskfGnssUpdate.VelocityUpdateResult? = null
 
     /*
      * ------------------------------------------------------------------
@@ -285,6 +305,125 @@ class Eskf(
         }
 
         return result
+    }
+
+    /*
+ * ------------------------------------------------------------------
+ * GNSS correction
+ * ------------------------------------------------------------------
+ *
+ * GNSS is a measurement, NOT a direct state overwrite.
+ *
+ * Position:
+ *   local NED metres
+ *
+ * Velocity:
+ *   local NED m/s
+ *
+ * Latitude/longitude -> local NED conversion belongs outside ESKF.
+ */
+
+    data class GnssPositionOutput(
+        val accepted: Boolean,
+        val measurement: Vec3,
+        val innovation: Vec3,
+        val innovationNormM: Double,
+        val nis: Double,
+        val acceptedGnssPositionCount: Long,
+        val rejectedGnssPositionCount: Long,
+        val reason: String? = null
+    )
+
+    data class GnssVelocityOutput(
+        val accepted: Boolean,
+        val measurement: Vec3,
+        val innovation: Vec3,
+        val innovationNormMps: Double,
+        val nis: Double,
+        val acceptedGnssVelocityCount: Long,
+        val rejectedGnssVelocityCount: Long,
+        val reason: String? = null
+    )
+
+    /**
+     * Applies a local-NED GNSS position measurement.
+     *
+     * The GNSS position must already be expressed in the same local
+     * navigation frame as NavigationState.position.
+     */
+    @Synchronized
+    fun applyGnssPosition(
+        gnssPositionNed: Vec3,
+        horizontalAccuracyM: Double? = null,
+        verticalAccuracyM: Double? = null
+    ): GnssPositionOutput {
+
+        val result =
+            gnssUpdate.updatePosition(
+                state = navigationState,
+                covariance = covariance,
+                gnssPositionNed = gnssPositionNed,
+                horizontalAccuracyM = horizontalAccuracyM,
+                verticalAccuracyM = verticalAccuracyM
+            )
+
+        lastGnssPositionResult = result
+
+        if (result.accepted) {
+            acceptedGnssPositionCount++
+        } else {
+            rejectedGnssPositionCount++
+        }
+
+        return GnssPositionOutput(
+            accepted = result.accepted,
+            measurement = result.measurement,
+            innovation = result.innovation,
+            innovationNormM = result.innovationNormM,
+            nis = result.nis,
+            acceptedGnssPositionCount = acceptedGnssPositionCount,
+            rejectedGnssPositionCount = rejectedGnssPositionCount,
+            reason = result.reason ?: "unknown"
+        )
+    }
+
+    /**
+     * Applies a local-NED GNSS velocity measurement.
+     *
+     * GNSS velocity must be supplied in m/s.
+     */
+    @Synchronized
+    fun applyGnssVelocity(
+        gnssVelocityNed: Vec3,
+        speedAccuracyMps: Double? = null
+    ): GnssVelocityOutput {
+
+        val result =
+            gnssUpdate.updateVelocity(
+                state = navigationState,
+                covariance = covariance,
+                gnssVelocityNed = gnssVelocityNed,
+                speedAccuracyMps = speedAccuracyMps
+            )
+
+        lastGnssVelocityResult = result
+
+        if (result.accepted) {
+            acceptedGnssVelocityCount++
+        } else {
+            rejectedGnssVelocityCount++
+        }
+
+        return GnssVelocityOutput(
+            accepted = result.accepted,
+            measurement = result.measurement,
+            innovation = result.innovation,
+            innovationNormMps = result.innovationNormMps,
+            nis = result.nis,
+            acceptedGnssVelocityCount = acceptedGnssVelocityCount,
+            rejectedGnssVelocityCount = rejectedGnssVelocityCount,
+            reason = result.reason ?: "unknown"
+        )
     }
 
     /*
@@ -523,6 +662,46 @@ class Eskf(
     }
 
     /*
+ * ------------------------------------------------------------------
+ * GNSS diagnostics
+ * ------------------------------------------------------------------
+ */
+
+    @Synchronized
+    fun getAcceptedGnssPositionCount(): Long {
+        return acceptedGnssPositionCount
+    }
+
+    @Synchronized
+    fun getRejectedGnssPositionCount(): Long {
+        return rejectedGnssPositionCount
+    }
+
+    @Synchronized
+    fun getAcceptedGnssVelocityCount(): Long {
+        return acceptedGnssVelocityCount
+    }
+
+    @Synchronized
+    fun getRejectedGnssVelocityCount(): Long {
+        return rejectedGnssVelocityCount
+    }
+
+    @Synchronized
+    fun getLastGnssPositionResult():
+            EskfGnssUpdate.PositionUpdateResult? {
+
+        return lastGnssPositionResult
+    }
+
+    @Synchronized
+    fun getLastGnssVelocityResult():
+            EskfGnssUpdate.VelocityUpdateResult? {
+
+        return lastGnssVelocityResult
+    }
+
+    /*
      * ------------------------------------------------------------------
      * Numerical validity
      * ------------------------------------------------------------------
@@ -606,6 +785,18 @@ class Eskf(
             rejectedZaruCount =
                 rejectedZaruCount,
 
+            acceptedGnssPositionCount =
+                acceptedGnssPositionCount,
+
+            rejectedGnssPositionCount =
+                rejectedGnssPositionCount,
+
+            acceptedGnssVelocityCount =
+                acceptedGnssVelocityCount,
+
+            rejectedGnssVelocityCount =
+                rejectedGnssVelocityCount,
+
             stateFinite =
                 isStateFinite(),
 
@@ -653,10 +844,19 @@ class Eskf(
         acceptedZaruCount = 0L
         rejectedZaruCount = 0L
 
+        acceptedGnssPositionCount = 0L
+        rejectedGnssPositionCount = 0L
+
+        acceptedGnssVelocityCount = 0L
+        rejectedGnssVelocityCount = 0L
+
+
         lastPredictionResult = null
         lastZuptResult = null
         lastNhcResult = null
         lastZaruResult = null
+        lastGnssPositionResult = null
+        lastGnssVelocityResult = null
     }
 
     /*
@@ -736,6 +936,8 @@ class Eskf(
         lastZuptResult = null
         lastNhcResult = null
         lastZaruResult = null
+        lastGnssPositionResult = null
+        lastGnssVelocityResult = null
     }
 
     /*
@@ -822,6 +1024,14 @@ data class EskfDiagnostics(
     val acceptedZaruCount: Long,
 
     val rejectedZaruCount: Long,
+
+    val acceptedGnssPositionCount: Long,
+
+    val rejectedGnssPositionCount: Long,
+
+    val acceptedGnssVelocityCount: Long,
+
+    val rejectedGnssVelocityCount: Long,
 
     val stateFinite: Boolean,
 
