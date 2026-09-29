@@ -34,8 +34,18 @@ data class CalibrationEvidence(
     val gravityLeveling: EvidenceState = EvidenceState.WAITING,
     val gyroBias: EvidenceState = EvidenceState.WAITING,
     val mountAzimuth: EvidenceState = EvidenceState.WAITING,
-    val automaticRefinement: EvidenceState = EvidenceState.WAITING,
-    val mountStability: EvidenceState = EvidenceState.WAITING
+
+    /*
+     * Runtime refinement.
+     *
+     * WAITING is valid here.
+     * It does NOT block initial calibration.
+     */
+    val automaticRefinement: EvidenceState =
+        EvidenceState.WAITING,
+
+    val mountStability: EvidenceState =
+        EvidenceState.WAITING
 )
 
 data class GnssEvidence(
@@ -83,12 +93,18 @@ data class TransformEvidence(
 
 data class DvfcQualityInput(
     val adapter: AdapterEvidence = AdapterEvidence(),
-    val calibration: CalibrationEvidence = CalibrationEvidence(),
-    val gnss: GnssEvidence = GnssEvidence(),
-    val excitation: ExcitationEvidence = ExcitationEvidence(),
-    val azimuth: AzimuthEvidence = AzimuthEvidence(),
-    val stability: StabilityEvidence = StabilityEvidence(),
-    val transform: TransformEvidence = TransformEvidence()
+    val calibration: CalibrationEvidence =
+        CalibrationEvidence(),
+    val gnss: GnssEvidence =
+        GnssEvidence(),
+    val excitation: ExcitationEvidence =
+        ExcitationEvidence(),
+    val azimuth: AzimuthEvidence =
+        AzimuthEvidence(),
+    val stability: StabilityEvidence =
+        StabilityEvidence(),
+    val transform: TransformEvidence =
+        TransformEvidence()
 )
 
 data class DvfcQualityResult(
@@ -104,6 +120,15 @@ object DvfcQualityEngine {
         input: DvfcQualityInput
     ): DvfcQualityResult {
 
+        /*
+         * =====================================================
+         * INITIAL CALIBRATION HARD GATES
+         * =====================================================
+         *
+         * These are the things that must be true before the
+         * device → vehicle transform is accepted.
+         */
+
         val hardGateFailure = when {
 
             !input.transform.valid ->
@@ -112,98 +137,178 @@ object DvfcQualityEngine {
             input.calibration.manualAlignment == EvidenceState.FAIL ->
                 "Manual alignment failed"
 
-            input.calibration.gravityLeveling == EvidenceState.FAIL ->
-                "Gravity leveling failed"
-
             input.stability.mountChanged == true ->
                 "Mount change confirmed"
 
-            input.gnss.accuracyM != null &&
-                    input.gnss.accuracyM > 15.0 ->
-                "GNSS accuracy is outside calibration gate"
-
-            input.excitation.score != null &&
-                    input.excitation.score < 0.35 ->
-                "Acceleration excitation is insufficient"
-
-            input.azimuth.circularConsistency != null &&
-                    input.azimuth.circularConsistency < 0.70 ->
-                "Mount azimuth consistency is too low"
-
-            else -> null
+            else ->
+                null
         }
 
-        val components = listOf(
+        /*
+         * =====================================================
+         * CORE EVIDENCE
+         * =====================================================
+         */
 
-            stateWeight(input.adapter.timestampSync),
-            stateWeight(input.adapter.units),
-            stateWeight(input.adapter.dataGaps),
-            stateWeight(input.adapter.resampling),
-            stateWeight(input.adapter.gravity),
+        val components =
+            mutableListOf<Double>()
 
-            stateWeight(input.calibration.manualAlignment),
-            stateWeight(input.calibration.gravityLeveling),
-            stateWeight(input.calibration.gyroBias),
-            stateWeight(input.calibration.mountAzimuth),
-            stateWeight(input.calibration.automaticRefinement),
-            stateWeight(input.calibration.mountStability),
+        addState(
+            components,
+            input.adapter.timestampSync
+        )
 
-            numericWeight(
-                input.gnss.accuracyM,
-                bad = 15.0,
-                good = 3.0
-            ),
+        addState(
+            components,
+            input.adapter.units
+        )
 
-            numericWeight(
-                input.excitation.score,
-                bad = 0.35,
-                good = 0.85
-            ),
+        addState(
+            components,
+            input.adapter.dataGaps
+        )
 
-            numericWeight(
-                input.azimuth.circularConsistency,
-                bad = 0.70,
-                good = 0.95
-            ),
+        addState(
+            components,
+            input.adapter.resampling
+        )
 
-            numericWeight(
-                input.stability.stationaryScore,
-                bad = 0.75,
-                good = 0.95
-            ),
+        addState(
+            components,
+            input.adapter.gravity
+        )
 
-            numericWeight(
-                input.stability.gravityScore,
-                bad = 0.75,
-                good = 0.95
-            ),
+        addState(
+            components,
+            input.calibration.manualAlignment
+        )
 
-            if (input.transform.valid) 1.0 else 0.0
+        addState(
+            components,
+            input.calibration.gravityLeveling
+        )
 
-        ).filterNotNull()
+        addState(
+            components,
+            input.calibration.gyroBias
+        )
+
+        addState(
+            components,
+            input.calibration.mountAzimuth
+        )
+
+        addState(
+            components,
+            input.calibration.mountStability
+        )
+
+        /*
+         * IMPORTANT:
+         *
+         * automaticRefinement is deliberately NOT included
+         * in the initial calibration score.
+         *
+         * It is a runtime GNSS refinement signal.
+         */
+
+        /*
+         * =====================================================
+         * NUMERIC EVIDENCE
+         * =====================================================
+         */
+
+        numericWeight(
+            input.stability.stationaryScore,
+            bad = 0.55,
+            good = 0.90
+        )?.let {
+            components.add(it)
+        }
+
+        numericWeight(
+            input.stability.gravityScore,
+            bad = 0.60,
+            good = 0.95
+        )?.let {
+            components.add(it)
+        }
+
+        numericWeight(
+            input.gnss.accuracyM,
+            bad = 30.0,
+            good = 3.0
+        )?.let {
+            /*
+             * GNSS contributes to quality when available,
+             * but is NOT an initial hard gate.
+             */
+            components.add(it)
+        }
+
+        numericWeight(
+            input.azimuth.circularConsistency,
+            bad = 0.50,
+            good = 0.95
+        )?.let {
+            /*
+             * Optional refinement quality.
+             */
+            components.add(it)
+        }
+
+        /*
+         * Transform is fundamental.
+         */
+        components.add(
+            if (input.transform.valid) {
+                1.0
+            } else {
+                0.0
+            }
+        )
 
         val score =
             if (components.isEmpty()) {
                 0
             } else {
-                (components.average() * 100.0)
+                (
+                        components.average() *
+                                100.0
+                        )
                     .toInt()
-                    .coerceIn(0, 100)
+                    .coerceIn(
+                        0,
+                        100
+                    )
             }
+
+        /*
+         * =====================================================
+         * STATUS
+         * =====================================================
+         *
+         * WAITING evidence is not automatically a launch blocker.
+         * Runtime/optional evidence may legitimately remain WAITING.
+         *
+         * Initial calibration is accepted only when there is no
+         * hard-gate failure and the quality score reaches the
+         * launch threshold.
+         *
+         * Transform validity is already enforced as a hard gate
+         * above, so a second "coreEvidenceReady" gate here would
+         * incorrectly block a valid high-quality calibration.
+         */
 
         val status = when {
 
             hardGateFailure != null ->
                 "INVALID"
 
-            components.isEmpty() ||
-                    components.size < 17 ->
-                "WAITING FOR TELEMETRY"
-
-            score >= 85 ->
+            score >= 82 ->
                 "READY"
 
-            score >= 65 ->
+            score >= 60 ->
                 "DEGRADED"
 
             else ->
@@ -218,23 +323,27 @@ object DvfcQualityEngine {
         )
     }
 
-    private fun stateWeight(
+    private fun addState(
+        components: MutableList<Double>,
         state: EvidenceState
-    ): Double? {
+    ) {
 
-        return when (state) {
+        when (state) {
 
             EvidenceState.PASS ->
-                1.0
+                components.add(1.0)
 
             EvidenceState.WARN ->
-                0.65
+                components.add(0.65)
 
             EvidenceState.FAIL ->
-                0.0
+                components.add(0.0)
 
-            EvidenceState.WAITING ->
-                null
+            /*
+             * WAITING means unavailable/not-applicable.
+             * Do not count it as zero quality.
+             */
+            EvidenceState.WAITING -> Unit
         }
     }
 
@@ -248,21 +357,35 @@ object DvfcQualityEngine {
             return null
         }
 
+        if (!value.isFinite()) {
+            return null
+        }
+
         if (bad == good) {
             return null
         }
 
         return if (bad < good) {
 
-            ((value - bad) /
-                    (good - bad))
-                .coerceIn(0.0, 1.0)
+            (
+                    (value - bad) /
+                            (good - bad)
+                    )
+                .coerceIn(
+                    0.0,
+                    1.0
+                )
 
         } else {
 
-            ((bad - value) /
-                    (bad - good))
-                .coerceIn(0.0, 1.0)
+            (
+                    (bad - value) /
+                            (bad - good)
+                    )
+                .coerceIn(
+                    0.0,
+                    1.0
+                )
         }
     }
 

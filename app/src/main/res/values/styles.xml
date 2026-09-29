@@ -31,7 +31,7 @@
         <item name="android:textColor">@color/fg_dim</item>
     </style>
 
-    <style name="Theme.AstraNav" parent="android:style/Theme.Material.NoActionBar">
+    <style name="Theme.AstraNav" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:statusBarColor">@color/ink_900</item>

@@ -11,6 +11,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.rishabh.astranav.home.HomeHeadingCompassView
+import com.rishabh.astranav.home.SparklineView
 import com.rishabh.astranav.navigation.MotionActivity
 import com.rishabh.astranav.navigation.NavigationMode
 import com.rishabh.astranav.navigation.NavigationSessionController
@@ -50,6 +51,21 @@ class HomeActivity : AppCompatActivity() {
     private lateinit var homeCompass: HomeHeadingCompassView
     private lateinit var compassReadout: TextView
 
+    private lateinit var positionValue: TextView
+    private lateinit var badgeGnss: View
+    private lateinit var badgeGnssValue: TextView
+    private lateinit var badgeImu: View
+    private lateinit var badgeImuValue: TextView
+    private lateinit var badgeDvfc: View
+    private lateinit var badgeDvfcValue: TextView
+    private lateinit var readinessAccuracyValue: TextView
+    private lateinit var readinessConfidenceValue: TextView
+    private lateinit var readinessDvfcOffsetValue: TextView
+    private lateinit var signalAiSpeedValue: TextView
+    private lateinit var signalMotionValue: TextView
+    private lateinit var aiSpeedSparkline: SparklineView
+    private lateinit var motionSparkline: SparklineView
+
     private val locationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             if (granted) NavigationSessionController.onLocationPermissionGranted(this)
@@ -77,6 +93,40 @@ class HomeActivity : AppCompatActivity() {
         zaruDot = findViewById(R.id.zaruDot)
         homeCompass = findViewById(R.id.homeCompass)
         compassReadout = findViewById(R.id.compassReadout)
+
+        positionValue = findViewById(R.id.positionValue)
+        badgeGnss = findViewById(R.id.badgeGnss)
+        badgeGnssValue = findViewById(R.id.badgeGnssValue)
+        badgeImu = findViewById(R.id.badgeImu)
+        badgeImuValue = findViewById(R.id.badgeImuValue)
+        badgeDvfc = findViewById(R.id.badgeDvfc)
+        badgeDvfcValue = findViewById(R.id.badgeDvfcValue)
+        readinessAccuracyValue = findViewById(R.id.readinessAccuracyValue)
+        readinessConfidenceValue = findViewById(R.id.readinessConfidenceValue)
+        readinessDvfcOffsetValue = findViewById(R.id.readinessDvfcOffsetValue)
+        signalAiSpeedValue = findViewById(R.id.signalAiSpeedValue)
+        signalMotionValue = findViewById(R.id.signalMotionValue)
+        aiSpeedSparkline = findViewById(R.id.aiSpeedSparkline)
+        motionSparkline = findViewById(R.id.motionSparkline)
+        aiSpeedSparkline.setColorRes(R.color.cyan)
+        motionSparkline.setColorRes(R.color.good)
+
+        findViewById<View>(R.id.navHome).setOnClickListener { /* already here */ }
+        findViewById<View>(R.id.navSensors).setOnClickListener { openSensorCheck() }
+        findViewById<View>(R.id.navDvfc).setOnClickListener {
+            startActivity(Intent(this, DVFCActivity::class.java))
+        }
+        findViewById<View>(R.id.navTrips).setOnClickListener {
+            Toast.makeText(this, "Trips screen isn't built yet", Toast.LENGTH_SHORT).show()
+        }
+        findViewById<View>(R.id.navSettings).setOnClickListener {
+            Toast.makeText(this, "Settings screen isn't built yet", Toast.LENGTH_SHORT).show()
+        }
+
+        findViewById<View>(R.id.positionCard).setOnClickListener {
+            // TODO: no map screen exists yet in this repo — wire it here once built.
+            Toast.makeText(this, "Map view isn't built yet", Toast.LENGTH_SHORT).show()
+        }
 
         findViewById<View>(R.id.btnInfo).setOnClickListener { openSensorCheck() }
         findViewById<View>(R.id.systemStatusCard).setOnClickListener { openSensorCheck() }
@@ -174,6 +224,46 @@ class HomeActivity : AppCompatActivity() {
         // ---- ZUPT / ZARU pills ----
         zuptDot.setBackgroundResource(if (s.zuptActive) R.drawable.dot_good else R.drawable.dot_warn)
         zaruDot.setBackgroundResource(if (s.zaruActive) R.drawable.dot_good else R.drawable.dot_warn)
+
+        // ---- Position card ----
+        positionValue.text = if (s.gnssLatitude != null && s.gnssLongitude != null) {
+            String.format(Locale.US, "%.4f, %.4f", s.gnssLatitude, s.gnssLongitude)
+        } else {
+            "Waiting for GNSS fix…"
+        }
+
+        // ---- System readiness badges ----
+        bindBadge(badgeGnss, badgeGnssValue, s.gnssAvailable, if (s.gnssAvailable) "Online" else "No fix")
+        bindBadge(badgeImu, badgeImuValue, s.imuAvailable, if (s.imuAvailable) "Online" else "Offline")
+        bindBadge(badgeDvfc, badgeDvfcValue, s.dvfcCalibrated, if (s.dvfcCalibrated) "Calibrated" else "Needs setup")
+
+        readinessAccuracyValue.text = if (s.nav.positionSigmaMeters > 0) {
+            String.format(Locale.US, "%.1f m", s.nav.positionSigmaMeters)
+        } else {
+            "-- m"
+        }
+        readinessConfidenceValue.text = "${s.nav.confidencePercent}%"
+        readinessDvfcOffsetValue.text = if (s.dvfcCalibrated && s.dvfcYawOffsetDeg != null) {
+            String.format(Locale.US, "%+.1f°", s.dvfcYawOffsetDeg)
+        } else {
+            "Uncalibrated"
+        }
+
+        // ---- Vehicle signal sparklines ----
+        signalAiSpeedValue.text = if (s.aiAvailable && s.aiSpeedMps != null) {
+            String.format(Locale.US, "%.1f km/h", s.aiSpeedMps * 3.6)
+        } else {
+            "-- km/h"
+        }
+        signalMotionValue.text = motionValue.text
+        aiSpeedSparkline.submit(s.aiSpeedHistory, autoScaleToMax = true)
+        motionSparkline.submit(s.motionEnergyHistory, autoScaleToMax = false)
+    }
+
+    private fun bindBadge(badgeView: View, valueView: TextView, healthy: Boolean, text: String) {
+        badgeView.setBackgroundResource(if (healthy) R.drawable.bg_badge_good else R.drawable.bg_badge_warn)
+        valueView.text = text
+        valueView.setTextColor(ContextCompat.getColor(this, if (healthy) R.color.good else R.color.warn))
     }
 
     private fun headingLabel(deg: Double): String {

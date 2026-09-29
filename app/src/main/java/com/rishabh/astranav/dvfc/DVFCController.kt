@@ -604,10 +604,15 @@ class DVFCController(
         // STABILITY
         // =====================================================
 
-        val stable =
+        val stabilityMetrics =
             stability.update(
-                angularVelocity
+                angularVelocity = angularVelocity,
+                gravity = sample.gravity,
+                linearAcceleration = sample.linearAcceleration
             )
+
+        val stable =
+            stabilityMetrics.stable
 
         if (stable) {
 
@@ -924,7 +929,7 @@ class DVFCController(
                     stationarySampleCount,
 
                 stationaryScore =
-                    stationaryScore(),
+                    stabilityMetrics.score,
 
                 // -------------------------------------------------
                 // GYRO

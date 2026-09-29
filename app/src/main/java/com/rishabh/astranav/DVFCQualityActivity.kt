@@ -311,7 +311,10 @@ class DVFCQualityActivity : AppCompatActivity() {
         ).setOnClickListener {
 
             evaluateAndUseCalibration()
+
         }
+
+
 
 
         // ========================================================
@@ -341,6 +344,8 @@ class DVFCQualityActivity : AppCompatActivity() {
             buildQualityInput()
         )
     }
+
+
 
 
     // ============================================================
@@ -681,17 +686,27 @@ class DVFCQualityActivity : AppCompatActivity() {
                 input
             )
 
-
         if (
             result.status == "READY" ||
             result.status == "DEGRADED"
         ) {
 
-            setResult(
-                RESULT_OK
+            setResult(RESULT_OK)
+
+            startActivity(
+                Intent(
+                    this,
+                    HomeActivity::class.java
+                ).apply {
+                    flags =
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                                Intent.FLAG_ACTIVITY_SINGLE_TOP
+                }
             )
 
             finish()
+
+
 
         } else {
 
@@ -767,17 +782,17 @@ class DVFCQualityActivity : AppCompatActivity() {
                 sampleCount < 10 ->
                     EvidenceState.WAITING
 
-                !resamplingActive ->
-                    EvidenceState.WAITING
-
                 resamplingRateHz <= 0.0 ->
                     EvidenceState.WAITING
 
                 resamplingRateHz in 9.0..11.0 ->
                     EvidenceState.PASS
 
-                else ->
+                resamplingRateHz in 8.0..12.0 ->
                     EvidenceState.WARN
+
+                else ->
+                    EvidenceState.FAIL
             }
 
 
@@ -807,20 +822,45 @@ class DVFCQualityActivity : AppCompatActivity() {
                     EvidenceState.WAITING
 
                 !gravityAvailable ->
-                    EvidenceState.WAITING
+                    EvidenceState.FAIL
 
                 gravityMagnitude < 0.0 ->
                     EvidenceState.WAITING
 
-                gravityMagnitude in 9.2..10.4 &&
-                        gravityStable ->
+                gravityMagnitude !in 8.5..11.0 ->
+                    EvidenceState.FAIL
+
+                gravityMagnitude in 9.2..10.4 ->
                     EvidenceState.PASS
 
-                gravityMagnitude in 8.5..11.0 ->
+                else ->
                     EvidenceState.WARN
+            }
+
+
+        // ========================================================
+        // GRAVITY LEVELING
+        // ========================================================
+
+        val gravityLevelingState =
+            when {
+
+                sampleCount < 10 ->
+                    EvidenceState.WAITING
+
+                !gravityAvailable ->
+                    EvidenceState.FAIL
+
+                gravityMagnitude < 8.5 ||
+                        gravityMagnitude > 11.0 ->
+                    EvidenceState.FAIL
+
+                kotlin.math.abs(gravityLevelRollDeg) <= 15.0 &&
+                        kotlin.math.abs(gravityLevelPitchDeg) <= 15.0 ->
+                    EvidenceState.PASS
 
                 else ->
-                    EvidenceState.FAIL
+                    EvidenceState.WARN
             }
 
 
@@ -900,6 +940,10 @@ class DVFCQualityActivity : AppCompatActivity() {
         // AUTOMATIC GNSS REFINEMENT
         // ========================================================
 
+        val autoAzimuth = automaticAzimuthDeg
+        val azimuthRes = azimuthResidualDeg
+        val consistency = azimuthConsistency
+
         val automaticRefinementState =
             when {
 
@@ -909,14 +953,17 @@ class DVFCQualityActivity : AppCompatActivity() {
                 !autoAzimuthAvailable ->
                     EvidenceState.WAITING
 
-                automaticAzimuthDeg == null ->
+                autoAzimuth == null ->
                     EvidenceState.WAITING
 
-                azimuthResidualDeg == null ->
+                azimuthRes == null ->
                     EvidenceState.WAITING
 
-                azimuthConsistency == null ->
+                consistency == null ->
                     EvidenceState.WAITING
+
+                consistency < 0.50 ->
+                    EvidenceState.WARN
 
                 else ->
                     EvidenceState.PASS
@@ -1037,7 +1084,7 @@ class DVFCQualityActivity : AppCompatActivity() {
                         manualState,
 
                     gravityLeveling =
-                        gravityState,
+                        gravityLevelingState,
 
                     gyroBias =
                         gyroBiasState,
@@ -1711,11 +1758,21 @@ class DVFCQualityActivity : AppCompatActivity() {
         // USE BUTTON
         // ========================================================
 
+        /*
+         * Use Calibration is enabled from the actual launch gate:
+         * no hard-gate failure + score >= 82.
+         *
+         * WAITING optional/runtime evidence (especially automatic
+         * GNSS refinement) must not disable a valid calibration.
+         */
+        val calibrationUsable =
+            result.hardGateFailure == null &&
+                    result.input.transform.valid &&
+                    result.score >= 82
+
         findViewById<Button>(
             R.id.actionUseCalibration
-        ).isEnabled =
-            result.status == "READY" ||
-                    result.status == "DEGRADED"
+        ).isEnabled = calibrationUsable
     }
 
 
@@ -1740,7 +1797,7 @@ class DVFCQualityActivity : AppCompatActivity() {
 
             "READY" ->
 
-                "Calibration meets the navigation launch threshold."
+                "Calibration accepted. DVFC is locked. GNSS auto-refinement can continue later while the vehicle is moving."
 
 
             "DEGRADED" ->

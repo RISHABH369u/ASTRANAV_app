@@ -44,6 +44,11 @@ data class HomeDashboardState(
     val aiSpeedMps: Double? = null,
     val dvfcCalibrated: Boolean = false,
     val dvfcYawOffsetDeg: Double? = null,
+    val gnssLatitude: Double? = null,
+    val gnssLongitude: Double? = null,
+    // Rolling, downsampled traces for the sparkline tiles — newest value last.
+    val aiSpeedHistory: List<Float> = emptyList(),
+    val motionEnergyHistory: List<Float> = emptyList(),
 )
 
 /**
@@ -80,6 +85,11 @@ object NavigationSessionController : SensorEventListener {
     private var latestGyro = doubleArrayOf(0.0, 0.0, 0.0)
     private var latestGnss: GnssSample? = null
 
+    // Raw last-known GNSS coordinates, kept purely for display (e.g. a "current position" card).
+    // NavigationEngine itself works in a local East/North metre frame, not lat/lon.
+    private var lastKnownLat: Double? = null
+    private var lastKnownLon: Double? = null
+
     // IMU Hz — rolling average of inter-sample periods (wall clock, not sensor timestamp,
     // since this is a UI-facing "is the sensor actually delivering samples" readout).
     private var hzSampleCount = 0
@@ -89,6 +99,14 @@ object NavigationSessionController : SensorEventListener {
     // Rolling accel-magnitude variance, purely for a slightly more honest ZUPT *display*
     // than the constant NavigationEngine passes internally (0.02) — doesn't change engine behavior.
     private val accelWindow = ArrayDeque<Double>()
+
+    // Sparkline traces for the Vehicle Signal card — pushed at ~5 Hz (every SPARKLINE_STRIDE-th
+    // IMU sample), not every sample, so the bars read as a trend rather than noise.
+    private const val SPARKLINE_STRIDE = 20
+    private const val SPARKLINE_LENGTH = 24
+    private var sparklineTick = 0
+    private val aiSpeedHistory = ArrayDeque<Float>()
+    private val motionEnergyHistory = ArrayDeque<Float>()
 
     private val _state = MutableStateFlow(HomeDashboardState())
     val state: StateFlow<HomeDashboardState> = _state
@@ -141,6 +159,8 @@ object NavigationSessionController : SensorEventListener {
         val callback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
                 val loc = result.lastLocation ?: return
+                lastKnownLat = loc.latitude
+                lastKnownLon = loc.longitude
                 latestGnss = GnssSample(
                     timestampMillis = loc.time,
                     latitudeDeg = loc.latitude,
@@ -198,6 +218,16 @@ object NavigationSessionController : SensorEventListener {
             else -> MotionActivity.DRIVING
         }
 
+        sparklineTick++
+        if (sparklineTick % SPARKLINE_STRIDE == 0) {
+            val aiKmh = ml?.takeIf { it.valid }?.speedMps?.times(3.6)?.toFloat() ?: 0f
+            pushSparkline(aiSpeedHistory, aiKmh)
+            // A simple 0..1 "how much is happening" trace: normalized gyro magnitude,
+            // capped so one sharp turn doesn't flatten the rest of the trace.
+            val energy = (gyroMag / 2.0).coerceIn(0.0, 1.0).toFloat()
+            pushSparkline(motionEnergyHistory, energy)
+        }
+
         _state.value = _state.value.copy(
             nav = nav,
             motion = motion,
@@ -209,7 +239,16 @@ object NavigationSessionController : SensorEventListener {
             gnssAccuracyM = latestGnss?.accuracyM,
             aiAvailable = ml?.valid == true,
             aiSpeedMps = ml?.takeIf { it.valid }?.speedMps,
+            gnssLatitude = lastKnownLat,
+            gnssLongitude = lastKnownLon,
+            aiSpeedHistory = aiSpeedHistory.toList(),
+            motionEnergyHistory = motionEnergyHistory.toList(),
         )
+    }
+
+    private fun pushSparkline(buffer: ArrayDeque<Float>, value: Float) {
+        buffer.addLast(value)
+        if (buffer.size > SPARKLINE_LENGTH) buffer.removeFirst()
     }
 
     private fun trackImuHz() {

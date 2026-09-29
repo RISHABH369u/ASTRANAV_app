@@ -566,6 +566,49 @@ class DVFCActivity : AppCompatActivity() {
         )
 
         // =====================================================
+// RESAMPLING
+// =====================================================
+
+        intent.putExtra(
+            DVFCQualityActivity.EXTRA_RESAMPLING_ACTIVE,
+            state.resamplingActive
+        )
+
+        intent.putExtra(
+            DVFCQualityActivity.EXTRA_RESAMPLING_RATE_HZ,
+            state.resamplingRateHz ?: -1.0
+        )
+
+// =====================================================
+// GRAVITY / COMPENSATION
+// =====================================================
+
+        intent.putExtra(
+            DVFCQualityActivity.EXTRA_GRAVITY_MAGNITUDE,
+            state.gravityMagnitude ?: -1.0
+        )
+
+        intent.putExtra(
+            DVFCQualityActivity.EXTRA_GRAVITY_STABLE,
+            state.gravityStable
+        )
+
+        intent.putExtra(
+            DVFCQualityActivity.EXTRA_GRAVITY_ROLL,
+            state.gravityLevelRollDeg ?: 0.0
+        )
+
+        intent.putExtra(
+            DVFCQualityActivity.EXTRA_GRAVITY_PITCH,
+            state.gravityLevelPitchDeg ?: 0.0
+        )
+
+        intent.putExtra(
+            DVFCQualityActivity.EXTRA_LINEAR_ACCELERATION_MAGNITUDE,
+            state.linearAccelerationMagnitude ?: -1.0
+        )
+
+        // =====================================================
         // STATIONARY
         // =====================================================
 
