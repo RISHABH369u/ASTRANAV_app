@@ -1,0 +1,12 @@
+{
+  "type": "MinMaxScaler",
+  "output": {
+    "name": "disp_pred",
+    "quantity": "displacement",
+    "unit": "m"
+  },
+  "data_min": 0.0,
+  "data_max": 45.0,
+  "scale": 0.02222222276031971,
+  "min_offset": 0.0
+}

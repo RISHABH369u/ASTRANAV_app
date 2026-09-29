@@ -1,0 +1,12 @@
+{
+  "type": "MinMaxScaler",
+  "output": {
+    "name": "ori_pred",
+    "quantity": "orientation_change",
+    "unit": "rad"
+  },
+  "data_min": -1.022413730621338,
+  "data_max": 1.003913402557373,
+  "scale": 0.49350371956825256,
+  "min_offset": 0.5045650005340576
+}
