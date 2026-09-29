@@ -22,16 +22,21 @@ import com.rishabh.astranav.ml.gru.GruSpeedOutput
 import com.rishabh.astranav.ml.astrasphm.AstraSphmEngine
 import com.rishabh.astranav.ml.astrasphm.AstraSphmOutput
 
+import com.rishabh.astranav.navigation.eskf.Eskf
+import com.rishabh.astranav.navigation.eskf.Vec3
 import com.rishabh.astranav.navigation.zupt.ZuptDetector
 import com.rishabh.astranav.navigation.zupt.ZuptResult
 
 import com.rishabh.astranav.sensor.ImuSample
 
 import java.util.Locale
+import kotlin.math.atan2
 import kotlin.math.sqrt
 
 
-class MLTestActivity : AppCompatActivity(), SensorEventListener {
+class MLTestActivity :
+    AppCompatActivity(),
+    SensorEventListener {
 
     // ============================================================
     // SENSOR SYSTEM
@@ -63,12 +68,33 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
 
 
     // ============================================================
+    // ASTRA-CORE ESKF
+    // ============================================================
+
+    private lateinit var eskf: Eskf
+
+    private var latestPredictionAccepted = false
+
+    private var latestZuptAccepted = false
+    private var latestZaruAccepted = false
+    private var latestNhcAccepted = false
+
+    private var latestZuptNis = Double.NaN
+    private var latestZaruNis = Double.NaN
+    private var latestNhcNis = Double.NaN
+
+    private var latestEskfReason: String? = null
+
+
+    // ============================================================
     // SENSOR VALUES
     // ============================================================
 
-    private var latestAccel = FloatArray(3)
+    private var latestAccel =
+        FloatArray(3)
 
-    private var latestGyro = FloatArray(3)
+    private var latestGyro =
+        FloatArray(3)
 
     private var latestGravity =
         floatArrayOf(
@@ -82,45 +108,55 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
     // TIMING
     // ============================================================
 
-    private var lastSensorTimestampNs = 0L
+    private var lastSensorTimestampNs =
+        0L
 
-    private var lastModelSampleNs = 0L
+    private var lastModelSampleNs =
+        0L
 
-    private var previousModelSampleNsForMotion = 0L
+    private var previousModelSampleNsForMotion =
+        0L
 
 
     // ============================================================
     // TEMPORAL MODEL STATE
     // ============================================================
 
-    private var previousTrustedSpeedKmh = 0.0
+    private var previousTrustedSpeedKmh =
+        0.0
 
-    private var previousYawRate = 0.0
+    private var previousYawRate =
+        0.0
 
 
     // ============================================================
     // COUNTERS
     // ============================================================
 
-    private var sampleCount = 0
+    private var sampleCount =
+        0
 
 
     // ============================================================
     // LATEST MODEL OUTPUTS
     // ============================================================
 
-    private var latestSpeedOutput: GruSpeedOutput? = null
+    private var latestSpeedOutput:
+            GruSpeedOutput? = null
 
-    private var latestMotionOutput: AstraMotionOutput? = null
+    private var latestMotionOutput:
+            AstraMotionOutput? = null
 
-    private var latestSphmOutput: AstraSphmOutput? = null
+    private var latestSphmOutput:
+            AstraSphmOutput? = null
 
 
     // ============================================================
     // DVFC
     // ============================================================
 
-    private var dvfcTransform: Quat? = null
+    private var dvfcTransform:
+            Quat? = null
 
 
     // ============================================================
@@ -181,14 +217,33 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
 
 
     // ============================================================
+    // ASTRA-CORE UI
+    // ============================================================
+
+    private lateinit var tvEskfStatus: TextView
+    private lateinit var tvEskfPosition: TextView
+    private lateinit var tvEskfVelocity: TextView
+    private lateinit var tvEskfHeading: TextView
+    private lateinit var tvEskfBias: TextView
+    private lateinit var tvEskfConstraints: TextView
+    private lateinit var tvEskfHealth: TextView
+
+
+    // ============================================================
     // ACTIVITY CREATE
     // ============================================================
 
-    override fun onCreate(savedInstanceState: Bundle?) {
+    override fun onCreate(
+        savedInstanceState: Bundle?
+    ) {
 
-        super.onCreate(savedInstanceState)
+        super.onCreate(
+            savedInstanceState
+        )
 
-        setContentView(R.layout.activity_mltest)
+        setContentView(
+            R.layout.activity_mltest
+        )
 
         bindViews()
 
@@ -198,8 +253,9 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
         // --------------------------------------------------------
 
         sensorManager =
-            getSystemService(SENSOR_SERVICE) as SensorManager
-
+            getSystemService(
+                SENSOR_SERVICE
+            ) as SensorManager
 
         accelerometer =
             sensorManager.getDefaultSensor(
@@ -264,12 +320,24 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
 
 
         // --------------------------------------------------------
+        // ASTRA-CORE
+        // --------------------------------------------------------
+
+        eskf =
+            Eskf()
+
+        tvEskfStatus.text =
+            "● ESKF READY · WAITING FOR IMU"
+
+
+        // --------------------------------------------------------
         // LOAD DVFC
         // --------------------------------------------------------
 
         dvfcTransform =
-            DvfcCalibrationStore.load(this)
-
+            DvfcCalibrationStore.load(
+                this
+            )
 
         tvDvfcStatus.text =
             if (dvfcTransform != null) {
@@ -280,7 +348,7 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
 
 
         // --------------------------------------------------------
-        // RESET BUTTON
+        // RESET
         // --------------------------------------------------------
 
         findViewById<Button>(
@@ -292,7 +360,7 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
 
 
         // --------------------------------------------------------
-        // CLOSE BUTTON
+        // CLOSE
         // --------------------------------------------------------
 
         findViewById<Button>(
@@ -311,88 +379,154 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
     private fun bindViews() {
 
         tvSystemStatus =
-            findViewById(R.id.tvMlSystemStatus)
+            findViewById(
+                R.id.tvMlSystemStatus
+            )
 
         tvSensorStatus =
-            findViewById(R.id.tvMlSensorStatus)
+            findViewById(
+                R.id.tvMlSensorStatus
+            )
 
         tvDvfcStatus =
-            findViewById(R.id.tvMlDvfcStatus)
+            findViewById(
+                R.id.tvMlDvfcStatus
+            )
 
 
         tvAccel =
-            findViewById(R.id.tvMlAccel)
+            findViewById(
+                R.id.tvMlAccel
+            )
 
         tvGravity =
-            findViewById(R.id.tvMlGravity)
+            findViewById(
+                R.id.tvMlGravity
+            )
 
         tvGyro =
-            findViewById(R.id.tvMlGyro)
+            findViewById(
+                R.id.tvMlGyro
+            )
 
         tvRate =
-            findViewById(R.id.tvMlRate)
+            findViewById(
+                R.id.tvMlRate
+            )
 
-
-        // --------------------------------------------------------
-        // SPEED
-        // --------------------------------------------------------
 
         tvSpeedWindow =
-            findViewById(R.id.tvSpeedWindow)
+            findViewById(
+                R.id.tvSpeedWindow
+            )
 
         tvSpeedRaw =
-            findViewById(R.id.tvSpeedRaw)
+            findViewById(
+                R.id.tvSpeedRaw
+            )
 
         tvSpeedKmh =
-            findViewById(R.id.tvSpeedKmh)
+            findViewById(
+                R.id.tvSpeedKmh
+            )
 
         tvSpeedMps =
-            findViewById(R.id.tvSpeedMps)
+            findViewById(
+                R.id.tvSpeedMps
+            )
 
         tvSpeedLatency =
-            findViewById(R.id.tvSpeedLatency)
+            findViewById(
+                R.id.tvSpeedLatency
+            )
 
-
-        // --------------------------------------------------------
-        // MOTION
-        // --------------------------------------------------------
 
         tvMotionWindow =
-            findViewById(R.id.tvMotionWindow)
+            findViewById(
+                R.id.tvMotionWindow
+            )
 
         tvMotionRaw =
-            findViewById(R.id.tvMotionRaw)
+            findViewById(
+                R.id.tvMotionRaw
+            )
 
         tvMotionProcessed =
-            findViewById(R.id.tvMotionProcessed)
+            findViewById(
+                R.id.tvMotionProcessed
+            )
 
         tvMotionLatency =
-            findViewById(R.id.tvMotionLatency)
+            findViewById(
+                R.id.tvMotionLatency
+            )
 
-
-        // --------------------------------------------------------
-        // SPHM
-        // --------------------------------------------------------
 
         tvSphmWindow =
-            findViewById(R.id.tvSphmWindow)
+            findViewById(
+                R.id.tvSphmWindow
+            )
 
         tvSphmRaw =
-            findViewById(R.id.tvSphmRaw)
+            findViewById(
+                R.id.tvSphmRaw
+            )
 
         tvSphmProcessed =
-            findViewById(R.id.tvSphmProcessed)
+            findViewById(
+                R.id.tvSphmProcessed
+            )
 
         tvSphmLatency =
-            findViewById(R.id.tvSphmLatency)
+            findViewById(
+                R.id.tvSphmLatency
+            )
 
-
-        // --------------------------------------------------------
-        // PRIOR SPEED
-        // --------------------------------------------------------
 
         tvPriorSpeed =
-            findViewById(R.id.tvPriorSpeed)
+            findViewById(
+                R.id.tvPriorSpeed
+            )
+
+
+        // --------------------------------------------------------
+        // ASTRA-CORE
+        // --------------------------------------------------------
+
+        tvEskfStatus =
+            findViewById(
+                R.id.tvEskfStatus
+            )
+
+        tvEskfPosition =
+            findViewById(
+                R.id.tvEskfPosition
+            )
+
+        tvEskfVelocity =
+            findViewById(
+                R.id.tvEskfVelocity
+            )
+
+        tvEskfHeading =
+            findViewById(
+                R.id.tvEskfHeading
+            )
+
+        tvEskfBias =
+            findViewById(
+                R.id.tvEskfBias
+            )
+
+        tvEskfConstraints =
+            findViewById(
+                R.id.tvEskfConstraints
+            )
+
+        tvEskfHealth =
+            findViewById(
+                R.id.tvEskfHealth
+            )
     }
 
 
@@ -404,7 +538,6 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
 
         super.onResume()
 
-
         accelerometer?.let {
 
             sensorManager.registerListener(
@@ -414,7 +547,6 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
             )
         }
 
-
         gyroscope?.let {
 
             sensorManager.registerListener(
@@ -423,7 +555,6 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
                 SensorManager.SENSOR_DELAY_GAME
             )
         }
-
 
         gravitySensor?.let {
 
@@ -444,7 +575,9 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
 
         super.onPause()
 
-        sensorManager.unregisterListener(this)
+        sensorManager.unregisterListener(
+            this
+        )
     }
 
 
@@ -456,7 +589,9 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
         event: SensorEvent
     ) {
 
-        when (event.sensor.type) {
+        when (
+            event.sensor.type
+        ) {
 
             Sensor.TYPE_ACCELEROMETER -> {
 
@@ -464,13 +599,11 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
                     event.values.copyOf()
             }
 
-
             Sensor.TYPE_GYROSCOPE -> {
 
                 latestGyro =
                     event.values.copyOf()
             }
-
 
             Sensor.TYPE_GRAVITY -> {
 
@@ -491,13 +624,12 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
             return
         }
 
-
         lastSensorTimestampNs =
             event.timestamp
 
 
         // --------------------------------------------------------
-        // 10 Hz MODEL TIMELINE
+        // 10 HZ MODEL TIMELINE
         // --------------------------------------------------------
 
         if (
@@ -506,14 +638,11 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
             lastModelSampleNs <
             100_000_000L
         ) {
-
             return
         }
 
-
         lastModelSampleNs =
             event.timestamp
-
 
         processModelSample(
             event.timestamp
@@ -522,7 +651,7 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
 
 
     // ============================================================
-    // MAIN MODEL PIPELINE
+    // MAIN PIPELINE
     // ============================================================
 
     private fun processModelSample(
@@ -532,9 +661,9 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
         sampleCount++
 
 
-        // ========================================================
+        // --------------------------------------------------------
         // RAW SENSOR VALUES
-        // ========================================================
+        // --------------------------------------------------------
 
         val ax =
             latestAccel[0].toDouble()
@@ -545,7 +674,6 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
         val az =
             latestAccel[2].toDouble()
 
-
         val gx =
             latestGyro[0].toDouble()
 
@@ -554,7 +682,6 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
 
         val gz =
             latestGyro[2].toDouble()
-
 
         val gravX =
             latestGravity[0].toDouble()
@@ -566,9 +693,9 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
             latestGravity[2].toDouble()
 
 
-        // ========================================================
+        // --------------------------------------------------------
         // IMU SAMPLE
-        // ========================================================
+        // --------------------------------------------------------
 
         val sample =
             ImuSample(
@@ -590,7 +717,93 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
             )
 
 
-        updateSensorUi(sample)
+        updateSensorUi(
+            sample
+        )
+
+
+        // ========================================================
+        // DEVICE → VEHICLE
+        // ========================================================
+
+        val deviceLinear =
+            floatArrayOf(
+                (ax - gravX).toFloat(),
+                (ay - gravY).toFloat(),
+                (az - gravZ).toFloat()
+            )
+
+        val deviceGyro =
+            floatArrayOf(
+                gx.toFloat(),
+                gy.toFloat(),
+                gz.toFloat()
+            )
+
+        val vehicleLinear =
+            dvfcTransform?.rotate(
+                deviceLinear
+            ) ?: deviceLinear
+
+        val vehicleGyro =
+            dvfcTransform?.rotate(
+                deviceGyro
+            ) ?: deviceGyro
+
+
+        // ========================================================
+        // ASTRA-CORE ESKF PREDICTION
+        // ========================================================
+
+        try {
+
+            val prediction =
+                eskf.predict(
+
+                    timestampNanos =
+                        timestampNs,
+
+                    accelerationBody =
+                        Vec3(
+
+                            vehicleLinear[0]
+                                .toDouble(),
+
+                            vehicleLinear[1]
+                                .toDouble(),
+
+                            vehicleLinear[2]
+                                .toDouble()
+                        ),
+
+                    gyroBody =
+                        Vec3(
+
+                            vehicleGyro[0]
+                                .toDouble(),
+
+                            vehicleGyro[1]
+                                .toDouble(),
+
+                            vehicleGyro[2]
+                                .toDouble()
+                        )
+                )
+
+            latestPredictionAccepted =
+                prediction.accepted
+
+            latestEskfReason =
+                prediction.reason
+
+        } catch (e: Exception) {
+
+            latestPredictionAccepted =
+                false
+
+            latestEskfReason =
+                "Prediction: ${e.message}"
+        }
 
 
         // ========================================================
@@ -602,32 +815,27 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
             val speedOutput =
                 astraSpeed.add(
 
-                    sample = sample,
+                    sample =
+                        sample,
 
                     previousTrustedSpeedKmh =
                         previousTrustedSpeedKmh
                 )
 
-
-            if (speedOutput != null) {
+            if (
+                speedOutput != null
+            ) {
 
                 latestSpeedOutput =
                     speedOutput
 
-
-                /*
-                 * TEST LAB TEMPORAL FEEDBACK
-                 *
-                 * Final navigation version should use
-                 * trusted ESKF velocity instead.
-                 */
-
-                if (speedOutput.valid) {
+                if (
+                    speedOutput.valid
+                ) {
 
                     previousTrustedSpeedKmh =
                         speedOutput.speedKmh
                 }
-
 
                 renderSpeed(
                     speedOutput
@@ -645,83 +853,24 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
         // ASTRA-MOTION
         // ========================================================
 
-        /*
-         * IMPORTANT:
-         *
-         * Declare outside try because ZUPT needs the
-         * motion output after inference.
-         */
-
-        var motionOutput: AstraMotionOutput? = null
-
+        var motionOutput:
+                AstraMotionOutput? =
+            null
 
         try {
 
-            // ----------------------------------------------------
-            // DEVICE LINEAR ACCELERATION
-            // ----------------------------------------------------
-
-            val linearX =
-                ax - gravX
-
-            val linearY =
-                ay - gravY
-
-            val linearZ =
-                az - gravZ
-
-
-            val deviceLinear =
-                floatArrayOf(
-
-                    linearX.toFloat(),
-                    linearY.toFloat(),
-                    linearZ.toFloat()
-                )
-
-
-            val deviceGyro =
-                floatArrayOf(
-
-                    gx.toFloat(),
-                    gy.toFloat(),
-                    gz.toFloat()
-                )
-
-
-            // ----------------------------------------------------
-            // DEVICE → VEHICLE
-            // ----------------------------------------------------
-
-            val vehicleLinear =
-                dvfcTransform?.rotate(
-                    deviceLinear
-                ) ?: deviceLinear
-
-
-            val vehicleGyro =
-                dvfcTransform?.rotate(
-                    deviceGyro
-                ) ?: deviceGyro
-
-
-            // ----------------------------------------------------
-            // VEHICLE FRAME
-            // ----------------------------------------------------
-
             val aFwd =
-                vehicleLinear[0].toDouble()
+                vehicleLinear[0]
+                    .toDouble()
 
             val aLat =
-                vehicleLinear[1].toDouble()
+                vehicleLinear[1]
+                    .toDouble()
 
             val wYaw =
-                vehicleGyro[2].toDouble()
+                vehicleGyro[2]
+                    .toDouble()
 
-
-            // ----------------------------------------------------
-            // DT
-            // ----------------------------------------------------
 
             val dt =
                 if (
@@ -744,47 +893,43 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
                     )
 
 
-            // ----------------------------------------------------
-            // YAW ACCELERATION
-            // ----------------------------------------------------
-
             val yawAccel =
                 (
                         wYaw -
                                 previousYawRate
                         ) / dt
 
-
             previousYawRate =
                 wYaw
-
 
             previousModelSampleNsForMotion =
                 timestampNs
 
 
-            // ----------------------------------------------------
-            // ASTRA-MOTION INFERENCE
-            // ----------------------------------------------------
-
             motionOutput =
                 astraMotion.add(
 
-                    aFwd = aFwd,
+                    aFwd =
+                        aFwd,
 
-                    wYaw = wYaw,
+                    wYaw =
+                        wYaw,
 
-                    aLat = aLat,
+                    aLat =
+                        aLat,
 
                     previousSpeedMps =
                         previousTrustedSpeedKmh /
                                 3.6,
 
-                    yawAccel = yawAccel
+                    yawAccel =
+                        yawAccel
                 )
 
 
-            if (motionOutput != null) {
+            if (
+                motionOutput != null
+            ) {
 
                 latestMotionOutput =
                     motionOutput
@@ -805,20 +950,7 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
         // ZUPT DETECTOR
         // ========================================================
 
-        /*
-         * ZUPT is an EVIDENCE GENERATOR here.
-         *
-         * It does NOT directly force ESKF velocity to zero.
-         *
-         * Actual ESKF ZUPT update will be implemented in
-         * the navigation estimator layer.
-         */
-
         try {
-
-            val motionZuptLogit =
-                motionOutput?.zuptScore
-
 
             val linearAccelX =
                 sample.accelX -
@@ -855,11 +987,10 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
                         linearAccelZ,
 
                     trustedSpeedMps =
-                        previousTrustedSpeedKmh /
-                                3.6,
+                        eskf.getVelocity().norm(),
 
                     zuptLogit =
-                        motionZuptLogit
+                        motionOutput?.zuptScore
                 )
 
 
@@ -867,67 +998,137 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
                 zuptResult
 
 
-            // ----------------------------------------------------
-            // LOG
-            // ----------------------------------------------------
+            // ====================================================
+            // ESKF ZUPT / ZARU / NHC
+            // ====================================================
 
-            Log.i(
-                "ASTRA_ZUPT",
+            latestZuptAccepted =
+                false
 
-                "active=${zuptResult.active} " +
+            latestZaruAccepted =
+                false
 
-                        "score=${
-                            String.format(
-                                Locale.US,
-                                "%.3f",
-                                zuptResult.score
+            latestNhcAccepted =
+                false
+
+            latestZuptNis =
+                Double.NaN
+
+            latestZaruNis =
+                Double.NaN
+
+            latestNhcNis =
+                Double.NaN
+
+
+            if (
+                zuptResult.active
+            ) {
+
+                // ------------------------------------------------
+                // ZUPT
+                // ------------------------------------------------
+
+                try {
+
+                    val result =
+                        eskf.applyZupt()
+
+                    latestZuptAccepted =
+                        result.accepted
+
+                    latestZuptNis =
+                        result.nis
+
+                    latestEskfReason =
+                        result.reason
+
+                } catch (e: Exception) {
+
+                    latestEskfReason =
+                        "ZUPT: ${e.message}"
+                }
+
+
+                // ------------------------------------------------
+                // ZARU
+                //
+                // IMPORTANT:
+                // raw gyro measurement
+                // ------------------------------------------------
+
+                try {
+
+                    val result =
+                        eskf.applyZaru(
+
+                            Vec3(
+
+                                vehicleGyro[0]
+                                    .toDouble(),
+
+                                vehicleGyro[1]
+                                    .toDouble(),
+
+                                vehicleGyro[2]
+                                    .toDouble()
                             )
-                        } " +
+                        )
 
-                        "ml=${
-                            zuptResult.mlProbability?.let {
+                    latestZaruAccepted =
+                        result.accepted
 
-                                String.format(
-                                    Locale.US,
-                                    "%.3f",
-                                    it
-                                )
+                    latestZaruNis =
+                        result.nis
 
-                            } ?: "--"
-                        } " +
+                } catch (e: Exception) {
 
-                        "gyro=${
-                            String.format(
-                                Locale.US,
-                                "%.3f",
-                                zuptResult.gyroMagnitude
-                            )
-                        } " +
+                    latestEskfReason =
+                        "ZARU: ${e.message}"
+                }
 
-                        "linAcc=${
-                            String.format(
-                                Locale.US,
-                                "%.3f",
-                                zuptResult.linearAccelerationMagnitude
-                            )
-                        } " +
+            } else {
 
-                        "speed=${
-                            String.format(
-                                Locale.US,
-                                "%.3f",
-                                zuptResult.trustedSpeedMps
-                            )
-                        } " +
+                // ------------------------------------------------
+                // NHC
+                // ------------------------------------------------
 
-                        "reason=${zuptResult.reason}"
-            )
+                val speed =
+                    eskf.getVelocity().norm()
+
+                if (
+                    speed >= 1.0 &&
+                    speed <= 60.0
+                ) {
+
+                    try {
+
+                        val result =
+                            eskf.applyNhc()
+
+                        latestNhcAccepted =
+                            result.accepted
+
+                        latestNhcNis =
+                            result.nis
+
+                        latestEskfReason =
+                            result.reason
+
+                    } catch (e: Exception) {
+
+                        latestEskfReason =
+                            "NHC: ${e.message}"
+                    }
+                }
+            }
+
 
         } catch (e: Exception) {
 
             Log.e(
                 "ASTRA_ZUPT",
-                "ZUPT detector error",
+                "ZUPT / ESKF constraint error",
                 e
             )
         }
@@ -942,17 +1143,16 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
             val sphmOutput =
                 astraSphm.addSample(
 
-                    sample = sample,
+                    sample =
+                        sample,
 
                     initialSpeedMps =
-                        previousTrustedSpeedKmh /
-                                3.6
+                        eskf.getVelocity().norm()
                 )
 
 
             latestSphmOutput =
                 sphmOutput
-
 
             renderSphm(
                 sphmOutput
@@ -969,16 +1169,25 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
 
 
         // ========================================================
+        // UPDATE ASTRA-CORE UI
+        // ========================================================
+
+        renderEskf()
+
+
+        // ========================================================
         // PRIOR SPEED
         // ========================================================
 
         tvPriorSpeed.text =
             String.format(
+
                 Locale.US,
 
                 "%.2f km/h",
 
-                previousTrustedSpeedKmh
+                eskf.getVelocity().norm() *
+                        3.6
             )
 
 
@@ -992,6 +1201,235 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
 
 
     // ============================================================
+    // ASTRA-CORE UI
+    // ============================================================
+
+    private fun renderEskf() {
+
+        val state =
+            eskf.getState()
+
+        val velocity =
+            state.velocity
+
+        val position =
+            state.position
+
+        val speed =
+            velocity.norm()
+
+        val horizontalSpeed =
+            sqrt(
+
+                velocity.x *
+                        velocity.x +
+
+                        velocity.y *
+                        velocity.y
+            )
+
+
+        val heading =
+            if (
+                horizontalSpeed >
+                0.20
+            ) {
+
+                (
+                        Math.toDegrees(
+                            atan2(
+                                velocity.y,
+                                velocity.x
+                            )
+                        ) + 360.0
+                        ) % 360.0
+
+            } else {
+
+                Double.NaN
+            }
+
+
+        val diagnostics =
+            eskf.diagnostics()
+
+
+        tvEskfStatus.text =
+            if (
+                latestPredictionAccepted
+            ) {
+
+                "● RUNNING · ESKF PREDICTION ACCEPTED"
+
+            } else {
+
+                "● WAITING / PREDICTION REJECTED"
+            }
+
+
+        tvEskfPosition.text =
+            String.format(
+
+                Locale.US,
+
+                "N %+.3f   E %+.3f   D %+.3f m",
+
+                position.x,
+                position.y,
+                position.z
+            )
+
+
+        tvEskfVelocity.text =
+            String.format(
+
+                Locale.US,
+
+                "Vn %+.3f   Ve %+.3f   Vd %+.3f m/s   |V| %.3f",
+
+                velocity.x,
+                velocity.y,
+                velocity.z,
+
+                speed
+            )
+
+
+        tvEskfHeading.text =
+            if (
+                heading.isFinite()
+            ) {
+
+                String.format(
+
+                    Locale.US,
+
+                    "HEADING %.2f°   H-SPEED %.3f m/s",
+
+                    heading,
+                    horizontalSpeed
+                )
+
+            } else {
+
+                String.format(
+
+                    Locale.US,
+
+                    "HEADING --   H-SPEED %.3f m/s",
+
+                    horizontalSpeed
+                )
+            }
+
+
+        tvEskfBias.text =
+            String.format(
+
+                Locale.US,
+
+                "GYRO BIAS [%+.5f, %+.5f, %+.5f]\n" +
+                        "ACC BIAS  [%+.4f, %+.4f, %+.4f]",
+
+                state.gyroBias.x,
+                state.gyroBias.y,
+                state.gyroBias.z,
+
+                state.accelBias.x,
+                state.accelBias.y,
+                state.accelBias.z
+            )
+
+
+        val zuptText =
+            when {
+
+                latestZuptAccepted ->
+                    "ACCEPT"
+
+                latestZuptResult?.active == true ->
+                    "REJECT"
+
+                else ->
+                    "OFF"
+            }
+
+
+        val zaruText =
+            when {
+
+                latestZaruAccepted ->
+                    "ACCEPT"
+
+                latestZuptResult?.active == true ->
+                    "REJECT"
+
+                else ->
+                    "OFF"
+            }
+
+
+        val nhcText =
+            if (
+                latestNhcAccepted
+            ) {
+
+                "ACCEPT"
+
+            } else {
+
+                "OFF"
+            }
+
+
+        tvEskfConstraints.text =
+            "ZUPT  $zuptText   NIS ${formatNis(latestZuptNis)}\n" +
+                    "ZARU  $zaruText   NIS ${formatNis(latestZaruNis)}\n" +
+                    "NHC   $nhcText   NIS ${formatNis(latestNhcNis)}"
+
+
+        tvEskfHealth.text =
+            "STATE finite=${diagnostics.stateFinite}\n" +
+                    "P finite=${diagnostics.covarianceFinite}  " +
+                    "diag=${diagnostics.covarianceDiagonalValid}\n" +
+                    "Prediction accepted=" +
+                    diagnostics.acceptedPredictionCount +
+                    " rejected=" +
+                    diagnostics.rejectedPredictionCount +
+                    "\nSpeed=%.3f m/s".format(
+                        Locale.US,
+                        speed
+                    ) +
+                    (
+                            latestEskfReason?.let {
+                                "\nLast: $it"
+                            } ?: ""
+                            )
+    }
+
+
+    private fun formatNis(
+        value: Double
+    ): String {
+
+        return if (
+            value.isFinite()
+        ) {
+
+            String.format(
+                Locale.US,
+                "%.3f",
+                value
+            )
+
+        } else {
+
+            "--"
+        }
+    }
+
+
+    // ============================================================
     // SENSOR UI
     // ============================================================
 
@@ -1001,6 +1439,7 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
 
         tvAccel.text =
             String.format(
+
                 Locale.US,
 
                 "X %+.3f   Y %+.3f   Z %+.3f m/s²",
@@ -1013,6 +1452,7 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
 
         tvGravity.text =
             String.format(
+
                 Locale.US,
 
                 "X %+.3f   Y %+.3f   Z %+.3f m/s²",
@@ -1025,6 +1465,7 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
 
         tvGyro.text =
             String.format(
+
                 Locale.US,
 
                 "X %+.4f   Y %+.4f   Z %+.4f rad/s",
@@ -1051,6 +1492,7 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
 
         tvRate.text =
             String.format(
+
                 Locale.US,
 
                 "GYRO |MAG| %.4f rad/s",
@@ -1071,9 +1513,9 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
         tvSpeedWindow.text =
             "${output.samplesUsed} / 20"
 
-
         tvSpeedRaw.text =
             String.format(
+
                 Locale.US,
 
                 "normalized = %+.6f",
@@ -1081,9 +1523,9 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
                 output.normalizedOutput
             )
 
-
         tvSpeedKmh.text =
             String.format(
+
                 Locale.US,
 
                 "%.3f km/h",
@@ -1091,16 +1533,15 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
                 output.speedKmh
             )
 
-
         tvSpeedMps.text =
             String.format(
+
                 Locale.US,
 
                 "%.3f m/s",
 
                 output.speedMps
             )
-
 
         tvSpeedLatency.text =
             "${output.inferenceMs} ms"
@@ -1149,7 +1590,6 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
                                 )
                             }
 
-
                         "output[$index] = $formatted"
                     }
                     .joinToString(
@@ -1169,7 +1609,6 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
                     "displacement = "
                 )
 
-
                 append(
 
                     output.displacementM?.let {
@@ -1183,14 +1622,11 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
                     } ?: "--"
                 )
 
-
                 append("\n")
-
 
                 append(
                     "orientation Δ = "
                 )
-
 
                 append(
 
@@ -1205,14 +1641,11 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
                     } ?: "--"
                 )
 
-
                 append("\n")
-
 
                 append(
                     "orientation Δ = "
                 )
-
 
                 append(
 
@@ -1230,14 +1663,11 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
                     } ?: "--"
                 )
 
-
                 append("\n")
-
 
                 append(
                     "ZUPT ML logit = "
                 )
-
 
                 append(
 
@@ -1252,18 +1682,14 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
                     } ?: "--"
                 )
 
-
                 append("\n")
-
 
                 val zupt =
                     latestZuptResult
 
-
                 append(
                     "ZUPT detector = "
                 )
-
 
                 append(
 
@@ -1280,8 +1706,9 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
                     }
                 )
 
-
-                if (zupt != null) {
+                if (
+                    zupt != null
+                ) {
 
                     append("\n")
 
@@ -1297,7 +1724,6 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
                             zupt.score
                         )
                     )
-
 
                     append("\n")
 
@@ -1325,19 +1751,13 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
         output: AstraSphmOutput
     ) {
 
-        // --------------------------------------------------------
-        // WINDOW
-        // --------------------------------------------------------
-
         tvSphmWindow.text =
             "${astraSphm.windowSize()} / 20"
 
 
-        // --------------------------------------------------------
-        // RAW / STATUS
-        // --------------------------------------------------------
-
-        if (!output.valid) {
+        if (
+            !output.valid
+        ) {
 
             tvSphmRaw.text =
                 output.errorMessage
@@ -1352,7 +1772,6 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
                         "speed = "
                     )
 
-
                     append(
 
                         output.speedMps?.let {
@@ -1366,14 +1785,11 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
                         } ?: "--"
                     )
 
-
                     append("\n")
-
 
                     append(
                         "position = "
                     )
-
 
                     if (
                         output.positionX != null &&
@@ -1397,14 +1813,11 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
                         append("--")
                     }
 
-
                     append("\n")
-
 
                     append(
                         "heading_delta = "
                     )
-
 
                     append(
 
@@ -1422,10 +1835,6 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
         }
 
 
-        // --------------------------------------------------------
-        // PROCESSED
-        // --------------------------------------------------------
-
         tvSphmProcessed.text =
             buildString {
 
@@ -1433,10 +1842,11 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
                     "STATUS = "
                 )
 
-
                 append(
 
-                    if (output.valid) {
+                    if (
+                        output.valid
+                    ) {
 
                         "VALID"
 
@@ -1446,14 +1856,11 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
                     }
                 )
 
-
                 append("\n")
-
 
                 append(
                     "SPEED = "
                 )
-
 
                 append(
 
@@ -1468,14 +1875,11 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
                     } ?: "--"
                 )
 
-
                 append("\n")
-
 
                 append(
                     "POSITION = "
                 )
-
 
                 if (
                     output.positionX != null &&
@@ -1499,14 +1903,11 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
                     append("--")
                 }
 
-
                 append("\n")
-
 
                 append(
                     "HEADING Δ = "
                 )
-
 
                 append(
 
@@ -1521,14 +1922,11 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
                     } ?: "--"
                 )
 
-
                 append("\n")
-
 
                 append(
                     "MOTION LOGITS = "
                 )
-
 
                 if (
                     output.motionLogits.isNotEmpty()
@@ -1559,10 +1957,6 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
             }
 
 
-        // --------------------------------------------------------
-        // LATENCY
-        // --------------------------------------------------------
-
         tvSphmLatency.text =
             "${output.latencyMs} ms"
     }
@@ -1576,6 +1970,8 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
 
         try {
 
+            eskf.reset()
+
             astraSpeed.reset()
 
             astraMotion.reset()
@@ -1587,10 +1983,6 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
         } catch (_: Exception) {
         }
 
-
-        // --------------------------------------------------------
-        // TEMPORAL STATE
-        // --------------------------------------------------------
 
         previousTrustedSpeedKmh =
             0.0
@@ -1604,18 +1996,12 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
         lastModelSampleNs =
             0L
 
-
-        // --------------------------------------------------------
-        // COUNTERS
-        // --------------------------------------------------------
+        lastSensorTimestampNs =
+            0L
 
         sampleCount =
             0
 
-
-        // --------------------------------------------------------
-        // OUTPUTS
-        // --------------------------------------------------------
 
         latestSpeedOutput =
             null
@@ -1627,6 +2013,31 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
             null
 
         latestZuptResult =
+            null
+
+
+        latestPredictionAccepted =
+            false
+
+        latestZuptAccepted =
+            false
+
+        latestZaruAccepted =
+            false
+
+        latestNhcAccepted =
+            false
+
+        latestZuptNis =
+            Double.NaN
+
+        latestZaruNis =
+            Double.NaN
+
+        latestNhcNis =
+            Double.NaN
+
+        latestEskfReason =
             null
 
 
@@ -1685,11 +2096,41 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
 
 
         // --------------------------------------------------------
-        // PRIOR SPEED
+        // ASTRA-CORE
         // --------------------------------------------------------
+
+        tvEskfStatus.text =
+            "● READY · WAITING FOR IMU"
+
+        tvEskfPosition.text =
+            "N +0.000   E +0.000   D +0.000 m"
+
+        tvEskfVelocity.text =
+            "Vn +0.000   Ve +0.000   Vd +0.000 m/s   |V| 0.000"
+
+        tvEskfHeading.text =
+            "HEADING --   H-SPEED 0.000 m/s"
+
+        tvEskfBias.text =
+            "GYRO BIAS [0.00000, 0.00000, 0.00000]\n" +
+                    "ACC BIAS  [0.0000, 0.0000, 0.0000]"
+
+        tvEskfConstraints.text =
+            "ZUPT OFF   NIS --\n" +
+                    "ZARU OFF   NIS --\n" +
+                    "NHC OFF    NIS --"
+
+        tvEskfHealth.text =
+            "P finite=--  diag=--\n" +
+                    "Prediction accepted=0 rejected=0\n" +
+                    "State finite=--"
+
 
         tvPriorSpeed.text =
             "0.00 km/h"
+
+        tvSensorStatus.text =
+            "● RESET · WAITING"
     }
 
 
@@ -1701,7 +2142,6 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
         sensor: Sensor?,
         accuracy: Int
     ) {
-
         // Not required for current inference test.
     }
 }

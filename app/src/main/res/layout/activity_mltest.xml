@@ -506,6 +506,154 @@
 
             </LinearLayout>
 
+            <!-- ========================================================= -->
+            <!-- ASTRA CORE · ESKF -->
+            <!-- ========================================================= -->
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:text="ASTRA-CORE · ESKF NAVIGATION"
+                android:textColor="@color/cyan"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="15dp">
+
+                <TextView
+                    android:id="@+id/tvEskfStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="● ESKF READY · WAITING FOR IMU"
+                    android:textColor="@color/good"
+                    android:textSize="10sp"
+                    android:fontFamily="monospace"
+                    android:textStyle="bold" />
+
+                <!-- POSITION -->
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:text="POSITION · LOCAL NED"
+                    android:textColor="@color/fg_faint"
+                    android:textSize="9sp"
+                    android:letterSpacing="0.08" />
+
+                <TextView
+                    android:id="@+id/tvEskfPosition"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="5dp"
+                    android:text="N +0.000   E +0.000   D +0.000 m"
+                    android:textColor="@color/fg"
+                    android:textSize="11sp"
+                    android:fontFamily="monospace" />
+
+                <!-- VELOCITY -->
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="13dp"
+                    android:text="VELOCITY"
+                    android:textColor="@color/fg_faint"
+                    android:textSize="9sp"
+                    android:letterSpacing="0.08" />
+
+                <TextView
+                    android:id="@+id/tvEskfVelocity"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="5dp"
+                    android:text="Vn +0.000   Ve +0.000   Vd +0.000 m/s   |V| 0.000"
+                    android:textColor="@color/fg"
+                    android:textSize="11sp"
+                    android:fontFamily="monospace" />
+
+                <TextView
+                    android:id="@+id/tvEskfHeading"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="HEADING --   H-SPEED 0.000 m/s"
+                    android:textColor="@color/cyan"
+                    android:textSize="11sp"
+                    android:fontFamily="monospace" />
+
+                <!-- BIASES -->
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="13dp"
+                    android:text="BIAS ESTIMATES"
+                    android:textColor="@color/fg_faint"
+                    android:textSize="9sp"
+                    android:letterSpacing="0.08" />
+
+                <TextView
+                    android:id="@+id/tvEskfBias"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="5dp"
+                    android:text="GYRO BIAS [0.00000, 0.00000, 0.00000]&#10;ACC BIAS  [0.0000, 0.0000, 0.0000]"
+                    android:textColor="@color/fg_dim"
+                    android:textSize="10sp"
+                    android:fontFamily="monospace" />
+
+                <!-- CONSTRAINTS -->
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="13dp"
+                    android:text="CONSTRAINT UPDATES"
+                    android:textColor="@color/fg_faint"
+                    android:textSize="9sp"
+                    android:letterSpacing="0.08" />
+
+                <TextView
+                    android:id="@+id/tvEskfConstraints"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="5dp"
+                    android:text="ZUPT OFF   NIS --&#10;ZARU OFF   NIS --&#10;NHC OFF    NIS --"
+                    android:textColor="@color/cyan"
+                    android:textSize="10sp"
+                    android:fontFamily="monospace" />
+
+                <!-- HEALTH -->
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="13dp"
+                    android:text="FILTER HEALTH"
+                    android:textColor="@color/fg_faint"
+                    android:textSize="9sp"
+                    android:letterSpacing="0.08" />
+
+                <TextView
+                    android:id="@+id/tvEskfHealth"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="5dp"
+                    android:text="P finite=--  diag=--&#10;Prediction accepted=0 rejected=0&#10;State finite=--"
+                    android:textColor="@color/fg_dim"
+                    android:textSize="10sp"
+                    android:fontFamily="monospace" />
+
+            </LinearLayout>
+
             <!-- CONTROLS -->
 
             <LinearLayout
