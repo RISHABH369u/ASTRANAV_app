@@ -3,7 +3,7 @@ package com.rishabh.astranav.navigation.eskf
 /**
  * ASTRA-Core Error-State Kalman Filter.
  *
- * This class is the central owner of:
+ * Central owner of:
  *
  *  1. Nominal navigation state
  *  2. Error-state covariance
@@ -11,14 +11,15 @@ package com.rishabh.astranav.navigation.eskf
  *  4. Covariance prediction
  *  5. Measurement corrections
  *
- * Current supported correction:
+ * Current supported corrections:
  *
  *  - ZUPT
- *
- * Future corrections will be added through the same pattern:
- *
- *  - GNSS
  *  - NHC
+ *
+ * Future corrections:
+ *
+ *  - ZARU
+ *  - GNSS
  *  - ASTRA-Speed
  *  - ASTRA-Motion
  *  - ASTRA-SPHM
@@ -63,9 +64,16 @@ class Eskf(
     private val zuptUpdate =
         EskfZuptUpdate(config)
 
+    private val nhcUpdate =
+        EskfNhcUpdate(
+            lateralStdMps = 0.20,
+            verticalStdMps = 0.30,
+            nisGate = 9.21
+        )
+
     /*
      * ------------------------------------------------------------------
-     * Diagnostics
+     * Diagnostics counters
      * ------------------------------------------------------------------
      */
 
@@ -77,11 +85,18 @@ class Eskf(
 
     private var rejectedZuptCount = 0L
 
+    private var acceptedNhcCount = 0L
+
+    private var rejectedNhcCount = 0L
+
     private var lastPredictionResult:
             EskfPrediction.PredictionResult? = null
 
     private var lastZuptResult:
             EskfZuptUpdate.UpdateResult? = null
+
+    private var lastNhcResult:
+            EskfNhcUpdate.UpdateResult? = null
 
     /*
      * ------------------------------------------------------------------
@@ -129,7 +144,7 @@ class Eskf(
      * IMU prediction
      * ------------------------------------------------------------------
      *
-     * This is the main ESKF prediction API.
+     * Main ESKF prediction API.
      *
      * Flow:
      *
@@ -174,7 +189,8 @@ class Eskf(
         /*
          * First sample establishes the ESKF clock.
          *
-         * No covariance propagation is necessary when dt = 0.
+         * No covariance propagation is necessary
+         * when dt = 0.
          */
         if (result.deltaTimeSeconds > 0.0) {
 
@@ -200,9 +216,61 @@ class Eskf(
         )
     }
 
-    /**
-     * Convenience prediction API using scalar IMU components.
+    /*
+     * ------------------------------------------------------------------
+     * NHC correction
+     * ------------------------------------------------------------------
+     *
+     * Non-Holonomic Constraint:
+     *
+     *     body lateral velocity  ~= 0
+     *     body vertical velocity ~= 0
+     *
+     * Forward velocity is NOT constrained.
+     *
+     * IMPORTANT:
+     *
+     * This method does not decide whether NHC should be used.
+     * The runtime/navigation layer must decide whether the vehicle
+     * is in a valid moving-ground-vehicle condition.
+     *
+     * Runtime flow:
+     *
+     *     vehicle moving
+     *          ↓
+     *     NHC eligible
+     *          ↓
+     *     Eskf.applyNhc()
+     *          ↓
+     *     generic measurement update
      */
+    @Synchronized
+    fun applyNhc(): EskfNhcUpdate.UpdateResult {
+
+        val result =
+            nhcUpdate.update(
+                state = navigationState,
+                covariance = covariance
+            )
+
+        lastNhcResult =
+            result
+
+        if (result.accepted) {
+            acceptedNhcCount++
+        } else {
+            rejectedNhcCount++
+        }
+
+        return result
+    }
+
+    /*
+     * ------------------------------------------------------------------
+     * Convenience prediction API
+     * ------------------------------------------------------------------
+     */
+
     @Synchronized
     fun predict(
         timestampNanos: Long,
@@ -216,11 +284,13 @@ class Eskf(
 
         return predict(
             timestampNanos = timestampNanos,
+
             accelerationBody = Vec3(
                 x = accelX,
                 y = accelY,
                 z = accelZ
             ),
+
             gyroBody = Vec3(
                 x = gyroX,
                 y = gyroY,
@@ -236,7 +306,7 @@ class Eskf(
      *
      * IMPORTANT:
      *
-     * The ZuptDetector decides whether the vehicle is stationary.
+     * ZuptDetector decides whether the vehicle is stationary.
      *
      * This method only performs the actual ESKF measurement update.
      *
@@ -381,7 +451,7 @@ class Eskf(
 
     /*
      * ------------------------------------------------------------------
-     * Diagnostics
+     * Prediction diagnostics
      * ------------------------------------------------------------------
      */
 
@@ -395,6 +465,12 @@ class Eskf(
         return rejectedPredictionCount
     }
 
+    /*
+     * ------------------------------------------------------------------
+     * ZUPT diagnostics
+     * ------------------------------------------------------------------
+     */
+
     @Synchronized
     fun getAcceptedZuptCount(): Long {
         return acceptedZuptCount
@@ -406,21 +482,57 @@ class Eskf(
     }
 
     @Synchronized
-    fun getLastPredictionResult():
-            EskfPrediction.PredictionResult? {
-
-        return lastPredictionResult
-    }
-
-    @Synchronized
     fun getLastZuptResult():
             EskfZuptUpdate.UpdateResult? {
 
         return lastZuptResult
     }
 
+    /*
+     * ------------------------------------------------------------------
+     * NHC diagnostics
+     * ------------------------------------------------------------------
+     */
+
+    @Synchronized
+    fun getAcceptedNhcCount(): Long {
+        return acceptedNhcCount
+    }
+
+    @Synchronized
+    fun getRejectedNhcCount(): Long {
+        return rejectedNhcCount
+    }
+
+    @Synchronized
+    fun getLastNhcResult():
+            EskfNhcUpdate.UpdateResult? {
+
+        return lastNhcResult
+    }
+
+    /*
+     * ------------------------------------------------------------------
+     * Prediction result diagnostics
+     * ------------------------------------------------------------------
+     */
+
+    @Synchronized
+    fun getLastPredictionResult():
+            EskfPrediction.PredictionResult? {
+
+        return lastPredictionResult
+    }
+
+    /*
+     * ------------------------------------------------------------------
+     * Numerical validity
+     * ------------------------------------------------------------------
+     */
+
     /**
-     * Checks whether the nominal state contains only finite values.
+     * Checks whether the nominal state contains
+     * only finite values.
      */
     @Synchronized
     fun isStateFinite(): Boolean {
@@ -450,13 +562,17 @@ class Eskf(
         return covariance.diagnosticSummary()
     }
 
-    /**
-     * Complete diagnostic snapshot.
+    /*
+     * ------------------------------------------------------------------
+     * Complete diagnostics
+     * ------------------------------------------------------------------
      */
+
     @Synchronized
     fun diagnostics(): EskfDiagnostics {
 
         return EskfDiagnostics(
+
             timestampNanos =
                 navigationState.timestampNanos,
 
@@ -490,6 +606,12 @@ class Eskf(
             rejectedZuptCount =
                 rejectedZuptCount,
 
+            acceptedNhcCount =
+                acceptedNhcCount,
+
+            rejectedNhcCount =
+                rejectedNhcCount,
+
             stateFinite =
                 isStateFinite(),
 
@@ -505,9 +627,7 @@ class Eskf(
      * ------------------------------------------------------------------
      * Reset
      * ------------------------------------------------------------------
-     */
-
-    /**
+     *
      * Complete ESKF reset.
      *
      * Resets:
@@ -545,15 +665,22 @@ class Eskf(
         acceptedZuptCount = 0L
         rejectedZuptCount = 0L
 
+        acceptedNhcCount = 0L
+        rejectedNhcCount = 0L
+
         lastPredictionResult = null
         lastZuptResult = null
+        lastNhcResult = null
     }
 
-    /**
-     * Resets only the sensor timeline.
+    /*
+     * ------------------------------------------------------------------
+     * Sensor timeline reset
+     * ------------------------------------------------------------------
      *
-     * Useful if the IMU stream restarts while the navigation
-     * state and covariance should be retained.
+     * Resets only the IMU timeline.
+     *
+     * State and covariance are retained.
      */
     @Synchronized
     fun resetSensorTimeline() {
@@ -567,9 +694,7 @@ class Eskf(
      * ------------------------------------------------------------------
      * Initial state
      * ------------------------------------------------------------------
-     */
-
-    /**
+     *
      * Sets the initial nominal navigation state.
      *
      * Covariance remains unchanged.
@@ -629,11 +754,12 @@ class Eskf(
 
         lastPredictionResult = null
         lastZuptResult = null
+        lastNhcResult = null
     }
 
     /*
      * ------------------------------------------------------------------
-     * Internal output builder
+     * Internal prediction output builder
      * ------------------------------------------------------------------
      */
 
@@ -643,6 +769,7 @@ class Eskf(
     ): PredictionOutput {
 
         return PredictionOutput(
+
             accepted =
                 result.accepted,
 
@@ -706,6 +833,10 @@ data class EskfDiagnostics(
     val acceptedZuptCount: Long,
 
     val rejectedZuptCount: Long,
+
+    val acceptedNhcCount: Long,
+
+    val rejectedNhcCount: Long,
 
     val stateFinite: Boolean,
 
