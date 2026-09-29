@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="8dp"
+    android:background="@drawable/bg_map_row"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingHorizontal="12dp"
+    android:paddingVertical="10dp">
+
+    <View
+        android:id="@+id/diagRowDot"
+        android:layout_width="7dp"
+        android:layout_height="7dp"
+        android:layout_marginEnd="10dp"
+        android:background="@drawable/dot_good" />
+
+    <TextView
+        android:id="@+id/diagRowLabel"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:text="Label"
+        android:textColor="@color/fg"
+        android:textSize="12.5sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/diagRowValue"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:fontFamily="monospace"
+        android:text="--"
+        android:textColor="@color/fg_dim"
+        android:textSize="11.5sp" />
+</LinearLayout>

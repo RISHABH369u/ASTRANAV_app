@@ -5,11 +5,17 @@ pluginManagement {
                 includeGroupByRegex("com\\.android.*")
                 includeGroupByRegex("com\\.google.*")
                 includeGroupByRegex("androidx.*")
+
             }
         }
         mavenCentral()
         gradlePluginPortal()
+        maven {
+            url = uri("https://api.mapbox.com/downloads/v2/releases/maven")
+            // No credentials block needed — Mapbox's Maps SDK downloads are public now.
+        }
     }
+
 }
 plugins {
     id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
@@ -19,6 +25,9 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        maven {
+            url = uri("https://api.mapbox.com/downloads/v2/releases/maven")
+        }
     }
 }
 

@@ -75,7 +75,7 @@ dependencies {
 
     implementation("com.google.guava:listenablefuture:9999.0-empty-to-avoid-conflict-with-guava")
 
-    implementation("com.google.android.material:material:1.13.0")
+    implementation("com.google.android.material:material:1.11.0")
 
     implementation("androidx.activity:activity-ktx:1.11.0")
     implementation("androidx.fragment:fragment-ktx:1.8.9")
@@ -110,6 +110,10 @@ dependencies {
 
     implementation(
         "androidx.cardview:cardview:1.0.0"
+    )
+
+    implementation(
+        "androidx.coordinatorlayout:coordinatorlayout:1.2.0"
     )
 
 
@@ -195,6 +199,12 @@ dependencies {
     implementation(
         "com.microsoft.onnxruntime:onnxruntime-android:1.22.0"
     )
+    //==================================
+    //MAPBOX
+    //====================================
+
+
+    implementation("com.mapbox.maps:android:11.31.0")
 
 
     // ============================================================
@@ -223,7 +233,4 @@ dependencies {
 
 
     implementation("io.github.sceneview:sceneview:2.2.1")
-    implementation("androidx.appcompat:appcompat:1.7.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 }

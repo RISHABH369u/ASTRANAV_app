@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="MapTelemetryCell">
+        <item name="android:orientation">vertical</item>
+        <item name="android:background">@drawable/bg_map_row</item>
+        <item name="android:paddingHorizontal">10dp</item>
+        <item name="android:paddingVertical">9dp</item>
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+    </style>
+
+    <style name="MapTelemetryLabel">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">@color/fg_faint</item>
+        <item name="android:textSize">9sp</item>
+        <item name="android:letterSpacing">0.05</item>
+    </style>
+
+    <style name="MapTelemetryValue">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">3dp</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:textColor">@color/fg</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="ReplayModeButton">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:gravity">center</item>
+        <item name="android:paddingVertical">9dp</item>
+        <item name="android:fontFamily">sans-serif-condensed-medium</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textColor">@color/fg_dim</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+    </style>
+</resources>

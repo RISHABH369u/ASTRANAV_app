@@ -141,8 +141,7 @@ class HomeActivity : AppCompatActivity() {
         findViewById<View>(R.id.systemStatusCard).setOnClickListener { openSensorCheck() }
         findViewById<View>(R.id.btnViewSystem).setOnClickListener { openSensorCheck() }
         findViewById<View>(R.id.btnStartNav).setOnClickListener {
-            // TODO: no Active Navigation screen exists yet in this repo — wire it here once built.
-            Toast.makeText(this, "Active navigation screen isn't built yet", Toast.LENGTH_SHORT).show()
+            startActivity(Intent(this, MapActivity::class.java))
         }
         findViewById<View>(R.id.lastTripCard).setOnClickListener {
             // TODO: no Trip Analytics screen/storage exists yet — this card is still mock data, honestly.

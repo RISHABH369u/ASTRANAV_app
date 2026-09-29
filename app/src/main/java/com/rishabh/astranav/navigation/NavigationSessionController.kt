@@ -18,8 +18,9 @@ import com.google.android.gms.location.Priority
 import com.rishabh.astranav.constraints.ZaruConstraint
 import com.rishabh.astranav.constraints.ZuptConstraint
 import com.rishabh.astranav.dvfc.DvfcCalibrationStore
-import com.rishabh.astranav.ml.gru.GruSpeedEngine
-import com.rishabh.astranav.ml.astramotion.AstraMotionEngine
+import com.rishabh.astranav.integrity.IntegrityMonitor
+import com.rishabh.astranav.integrity.IntegritySnapshot
+import com.rishabh.astranav.ml.TcnMotionEngine
 import com.rishabh.astranav.sensor.GnssSample
 import com.rishabh.astranav.sensor.ImuSample
 import com.rishabh.astranav.sensor.SensorAdapter
@@ -31,7 +32,7 @@ import kotlinx.coroutines.flow.StateFlow
 /** What the vehicle is doing right now — derived from NavigationState.stationary + live yaw rate. */
 enum class MotionActivity { STATIONARY, DRIVING, TURNING }
 
-/** Everything HomeActivity needs to render, in one live snapshot. */
+/** Everything HomeActivity / MapActivity need to render, in one live snapshot. */
 data class HomeDashboardState(
     val nav: NavigationState = NavigationState(),
     val motion: MotionActivity = MotionActivity.STATIONARY,
@@ -47,40 +48,43 @@ data class HomeDashboardState(
     val dvfcYawOffsetDeg: Double? = null,
     val gnssLatitude: Double? = null,
     val gnssLongitude: Double? = null,
-    // Rolling, downsampled traces for the sparkline tiles — newest value last.
+    // Rolling, downsampled traces for the Home sparkline tiles — newest value last.
     val aiSpeedHistory: List<Float> = emptyList(),
     val motionEnergyHistory: List<Float> = emptyList(),
+    // Map-screen additions
+    val tripDistanceMeters: Double = 0.0,
+    val integrity: IntegritySnapshot? = null,
+    /** The last lat/lon we had a real GNSS fix at — the "last reliable GNSS point" marker while in dead reckoning. */
+    val lastGnssFixLatitude: Double? = null,
+    val lastGnssFixLongitude: Double? = null,
 )
 
 /**
- * The first real bridge from live Android sensors/GNSS to the existing
- * NavigationEngine. Everything in navigation/, constraints/, gnss/ and ml/
- * was pure, already-correct logic with no Android sensor wiring anywhere in
- * the app yet — MainActivity's own comment says as much ("no sensor,
- * location, or permission APIs are used"). This is that wiring, scoped to
- * what HomeActivity needs to show live numbers instead of mock ones.
+ * The bridge from live Android sensors/GNSS to the existing NavigationEngine.
+ * Everything in navigation/, constraints/, gnss/, ml/ and integrity/ was pure,
+ * already-correct logic with no Android sensor wiring anywhere in the app —
+ * MainActivity's own comment says as much ("no sensor, location, or
+ * permission APIs are used"). This is that wiring.
  *
- * A process-wide singleton for now, started/stopped from HomeActivity's
- * onResume/onPause — not a foreground Service. The manifest already
- * requests FOREGROUND_SERVICE / FOREGROUND_SERVICE_LOCATION, which is the
- * natural next step once navigation needs to keep running with the screen
- * off or the app backgrounded; that's out of scope for just the Home screen.
+ * A process-wide singleton, started/stopped from each consuming Activity's
+ * onResume/onPause (Home, Map) — not a foreground Service. The manifest
+ * already requests FOREGROUND_SERVICE / FOREGROUND_SERVICE_LOCATION, which
+ * is the natural next step once navigation needs to keep running with the
+ * screen off or the app backgrounded; out of scope for now.
  */
 object NavigationSessionController : SensorEventListener {
 
     private const val TURN_RATE_THRESHOLD_RAD_S = 0.12 // ≈ 7°/s
     private const val ACCEL_VARIANCE_WINDOW = 30
+    private const val SPARKLINE_STRIDE = 20
+    private const val SPARKLINE_LENGTH = 24
 
     private val engine = NavigationEngine()
     private val adapter = SensorAdapter()
     private val zupt = ZuptConstraint()
     private val zaru = ZaruConstraint()
-    private var astraSpeed: GruSpeedEngine? = null
-    private var astraMotion: AstraMotionEngine? = null
-
-    private var previousTrustedSpeedKmh = 0.0
-    private var previousYawRate = 0.0
-    private var previousModelTimestampNs: Long? = null
+    private val integrityMonitor = IntegrityMonitor()
+    private var tcn: TcnMotionEngine? = null
 
     private var sensorManager: SensorManager? = null
     private var fusedLocationClient: FusedLocationProviderClient? = null
@@ -91,7 +95,8 @@ object NavigationSessionController : SensorEventListener {
     private var latestGyro = doubleArrayOf(0.0, 0.0, 0.0)
     private var latestGnss: GnssSample? = null
 
-    // Raw last-known GNSS coordinates, kept purely for display (e.g. a "current position" card).
+    // Raw last-known GNSS coordinates, kept purely for display (e.g. a "current position" card,
+    // or the map's "last reliable fix" marker during dead reckoning).
     // NavigationEngine itself works in a local East/North metre frame, not lat/lon.
     private var lastKnownLat: Double? = null
     private var lastKnownLon: Double? = null
@@ -106,13 +111,14 @@ object NavigationSessionController : SensorEventListener {
     // than the constant NavigationEngine passes internally (0.02) — doesn't change engine behavior.
     private val accelWindow = ArrayDeque<Double>()
 
-    // Sparkline traces for the Vehicle Signal card — pushed at ~5 Hz (every SPARKLINE_STRIDE-th
-    // IMU sample), not every sample, so the bars read as a trend rather than noise.
-    private const val SPARKLINE_STRIDE = 20
-    private const val SPARKLINE_LENGTH = 24
+    // Sparkline traces for Home's Vehicle Signal card — pushed at ~5 Hz (every
+    // SPARKLINE_STRIDE-th IMU sample), not every sample, so the bars read as a trend.
     private var sparklineTick = 0
     private val aiSpeedHistory = ArrayDeque<Float>()
     private val motionEnergyHistory = ArrayDeque<Float>()
+
+    // Cumulative trip distance — trapezoidal integration of fused speed. Resettable.
+    private var tripDistanceMeters = 0.0
 
     private val _state = MutableStateFlow(HomeDashboardState())
     val state: StateFlow<HomeDashboardState> = _state
@@ -130,29 +136,7 @@ object NavigationSessionController : SensorEventListener {
             dvfcYawOffsetDeg = dvfc?.toEulerDegrees()?.get(2)?.toDouble(),
         )
 
-        astraSpeed = runCatching {
-            GruSpeedEngine(appContext)
-        }.onFailure {
-            android.util.Log.e(
-                "ASTRANAV_ML",
-                "Failed to load ASTRA-Speed",
-                it
-            )
-        }.getOrNull()
-
-        astraMotion = runCatching {
-            AstraMotionEngine(appContext)
-        }.onFailure {
-            android.util.Log.e(
-                "ASTRANAV_ML",
-                "Failed to load ASTRA-Motion",
-                it
-            )
-        }.getOrNull()
-
-        previousTrustedSpeedKmh = 0.0
-        previousYawRate = 0.0
-        previousModelTimestampNs = null
+        if (tcn == null) tcn = runCatching { TcnMotionEngine(appContext) }.getOrNull()
 
         sensorManager = (appContext.getSystemService(Context.SENSOR_SERVICE) as? SensorManager)?.also { sm ->
             sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)?.let { sm.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
@@ -178,6 +162,12 @@ object NavigationSessionController : SensorEventListener {
         locationCallback?.let { fusedLocationClient?.removeLocationUpdates(it) }
         locationCallback = null
         fusedLocationClient = null
+    }
+
+    /** Zeroes the cumulative trip odometer — call when the user starts a new trip. */
+    fun resetTrip() {
+        tripDistanceMeters = 0.0
+        _state.value = _state.value.copy(tripDistanceMeters = 0.0)
     }
 
     private fun startLocationUpdates(context: Context) {
@@ -236,51 +226,10 @@ object NavigationSessionController : SensorEventListener {
         accelWindow.addLast(accelMag)
         if (accelWindow.size > ACCEL_VARIANCE_WINDOW) accelWindow.removeFirst()
 
-//        val ml = tcn?.add(imu)
-//        val nav = engine.update(imu, dt, latestGnss, ml)
-        val speedOutput =
-            astraSpeed?.add(
-                sample = imu,
-                previousTrustedSpeedKmh = previousTrustedSpeedKmh
-            )
+        val ml = tcn?.add(imu)
+        val nav = engine.update(imu, dt, latestGnss, ml)
 
-        if (speedOutput?.valid == true) {
-
-            previousTrustedSpeedKmh =
-                speedOutput.speedKmh
-
-            android.util.Log.i(
-                "ASTRANAV_ML",
-                "ASTRA-Speed REAL OUTPUT = " +
-                        "${"%.2f".format(speedOutput.speedKmh)} km/h"
-            )
-        }
-        val ml =
-            speedOutput?.takeIf { it.valid }?.let {
-
-                com.rishabh.astranav.ml.MlMeasurement(
-                    speedMps = it.speedMps,
-
-                    // Conservative temporary fallback.
-                    // This is NOT claimed as calibrated model uncertainty.
-                    variance = 9.0,
-
-                    confidence = 0.5,
-
-                    valid = true
-                )
-            }
-
-        val nav =
-            engine.update(
-                imu,
-                dt,
-                latestGnss,
-                ml
-            )
-
-
-
+        tripDistanceMeters += nav.speedMps * dt
 
         val gyroMag = sqrt(imu.gyroX * imu.gyroX + imu.gyroY * imu.gyroY + imu.gyroZ * imu.gyroZ)
         val motion = when {
@@ -293,11 +242,22 @@ object NavigationSessionController : SensorEventListener {
         if (sparklineTick % SPARKLINE_STRIDE == 0) {
             val aiKmh = ml?.takeIf { it.valid }?.speedMps?.times(3.6)?.toFloat() ?: 0f
             pushSparkline(aiSpeedHistory, aiKmh)
-            // A simple 0..1 "how much is happening" trace: normalized gyro magnitude,
-            // capped so one sharp turn doesn't flatten the rest of the trace.
             val energy = (gyroMag / 2.0).coerceIn(0.0, 1.0).toFloat()
             pushSparkline(motionEnergyHistory, energy)
         }
+
+        val gnssAvailableNow = latestGnss != null
+        val gnssAccuracy = latestGnss?.accuracyM
+        val aiAvailableNow = ml?.valid == true
+
+        // Integrity inputs — three of these are real signals already produced elsewhere in the
+        // app; "physics" is an honest placeholder (1.0) until a real physics-consistency check
+        // (e.g. NHC residual) exists to drive it — see IntegrityMonitor's doc in the README.
+        val mlScore = if (aiAvailableNow) 1.0 else 0.4
+        val physicsScore = 1.0
+        val mapScore = if (nav.mapMatched) 1.0 else 0.6
+        val gnssScore = if (gnssAvailableNow && gnssAccuracy != null) (1.0 - (gnssAccuracy / 30.0)).coerceIn(0.0, 1.0) else 0.0
+        val integrity = integrityMonitor.evaluate(mlScore, physicsScore, mapScore, gnssScore)
 
         _state.value = _state.value.copy(
             nav = nav,
@@ -306,14 +266,18 @@ object NavigationSessionController : SensorEventListener {
             zaruActive = zaru.active(gyroMag, nav.stationary),
             imuAvailable = true,
             imuHz = currentImuHz(),
-            gnssAvailable = latestGnss != null,
-            gnssAccuracyM = latestGnss?.accuracyM,
-            aiAvailable = ml?.valid == true,
+            gnssAvailable = gnssAvailableNow,
+            gnssAccuracyM = gnssAccuracy,
+            aiAvailable = aiAvailableNow,
             aiSpeedMps = ml?.takeIf { it.valid }?.speedMps,
             gnssLatitude = lastKnownLat,
             gnssLongitude = lastKnownLon,
             aiSpeedHistory = aiSpeedHistory.toList(),
             motionEnergyHistory = motionEnergyHistory.toList(),
+            tripDistanceMeters = tripDistanceMeters,
+            integrity = integrity,
+            lastGnssFixLatitude = if (gnssAvailableNow) lastKnownLat else _state.value.lastGnssFixLatitude,
+            lastGnssFixLongitude = if (gnssAvailableNow) lastKnownLon else _state.value.lastGnssFixLongitude,
         )
     }
 
@@ -329,7 +293,7 @@ object NavigationSessionController : SensorEventListener {
             if (periodMs in 0.5..500.0) {
                 hzPeriodSumMs += periodMs
                 hzSampleCount++
-                if (hzSampleCount > 200) { // keep it a rolling-ish average, not an unbounded sum
+                if (hzSampleCount > 200) {
                     hzPeriodSumMs *= 0.5
                     hzSampleCount /= 2
                 }
