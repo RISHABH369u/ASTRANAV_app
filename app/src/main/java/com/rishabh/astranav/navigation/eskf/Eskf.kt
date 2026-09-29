@@ -15,10 +15,10 @@ package com.rishabh.astranav.navigation.eskf
  *
  *  - ZUPT
  *  - NHC
+ *  - ZARU
  *
  * Future corrections:
  *
- *  - ZARU
  *  - GNSS
  *  - ASTRA-Speed
  *  - ASTRA-Motion
@@ -71,6 +71,12 @@ class Eskf(
             nisGate = 9.21
         )
 
+    private val zaruUpdate =
+        EskfZaruUpdate(
+            gyroStdRadPerSec = 0.05,
+            nisGate = 11.34
+        )
+
     /*
      * ------------------------------------------------------------------
      * Diagnostics counters
@@ -78,16 +84,16 @@ class Eskf(
      */
 
     private var acceptedPredictionCount = 0L
-
     private var rejectedPredictionCount = 0L
 
     private var acceptedZuptCount = 0L
-
     private var rejectedZuptCount = 0L
 
     private var acceptedNhcCount = 0L
-
     private var rejectedNhcCount = 0L
+
+    private var acceptedZaruCount = 0L
+    private var rejectedZaruCount = 0L
 
     private var lastPredictionResult:
             EskfPrediction.PredictionResult? = null
@@ -97,6 +103,9 @@ class Eskf(
 
     private var lastNhcResult:
             EskfNhcUpdate.UpdateResult? = null
+
+    private var lastZaruResult:
+            EskfZaruUpdate.UpdateResult? = null
 
     /*
      * ------------------------------------------------------------------
@@ -143,19 +152,8 @@ class Eskf(
      * ------------------------------------------------------------------
      * IMU prediction
      * ------------------------------------------------------------------
-     *
-     * Main ESKF prediction API.
-     *
-     * Flow:
-     *
-     * IMU
-     *  ↓
-     * nominal INS prediction
-     *  ↓
-     * covariance prediction
-     *  ↓
-     * updated ESKF state
      */
+
     @Synchronized
     fun predict(
         timestampNanos: Long,
@@ -171,9 +169,6 @@ class Eskf(
                 gyroBody = gyroBody
             )
 
-        /*
-         * Prediction rejected.
-         */
         if (!result.accepted) {
 
             rejectedPredictionCount++
@@ -188,9 +183,6 @@ class Eskf(
 
         /*
          * First sample establishes the ESKF clock.
-         *
-         * No covariance propagation is necessary
-         * when dt = 0.
          */
         if (result.deltaTimeSeconds > 0.0) {
 
@@ -228,21 +220,7 @@ class Eskf(
      *
      * Forward velocity is NOT constrained.
      *
-     * IMPORTANT:
-     *
-     * This method does not decide whether NHC should be used.
-     * The runtime/navigation layer must decide whether the vehicle
-     * is in a valid moving-ground-vehicle condition.
-     *
-     * Runtime flow:
-     *
-     *     vehicle moving
-     *          ↓
-     *     NHC eligible
-     *          ↓
-     *     Eskf.applyNhc()
-     *          ↓
-     *     generic measurement update
+     * The caller decides whether NHC is currently eligible.
      */
     @Synchronized
     fun applyNhc(): EskfNhcUpdate.UpdateResult {
@@ -260,6 +238,50 @@ class Eskf(
             acceptedNhcCount++
         } else {
             rejectedNhcCount++
+        }
+
+        return result
+    }
+
+    /*
+     * ------------------------------------------------------------------
+     * ZARU correction
+     * ------------------------------------------------------------------
+     *
+     * Zero Angular Rate Update.
+     *
+     * The caller must establish that the vehicle is stationary
+     * before invoking this method.
+     *
+     * The actual gyro measurement is passed into ZARU.
+     *
+     * Measurement:
+     *
+     *     gyro ~= gyroBias
+     *
+     * Main correction:
+     *
+     *     gyro bias
+     */
+    @Synchronized
+    fun applyZaru(
+        gyroBody: Vec3
+    ): EskfZaruUpdate.UpdateResult {
+
+        val result =
+            zaruUpdate.update(
+                state = navigationState,
+                covariance = covariance,
+                gyroMeasurement = gyroBody
+            )
+
+        lastZaruResult =
+            result
+
+        if (result.accepted) {
+            acceptedZaruCount++
+        } else {
+            rejectedZaruCount++
         }
 
         return result
@@ -303,25 +325,8 @@ class Eskf(
      * ------------------------------------------------------------------
      * ZUPT correction
      * ------------------------------------------------------------------
-     *
-     * IMPORTANT:
-     *
-     * ZuptDetector decides whether the vehicle is stationary.
-     *
-     * This method only performs the actual ESKF measurement update.
-     *
-     * Runtime flow:
-     *
-     * ZuptDetector
-     *      ↓
-     * stationary == true
-     *      ↓
-     * Eskf.applyZupt()
-     *      ↓
-     * z = [0,0,0] m/s
-     *      ↓
-     * Kalman correction
      */
+
     @Synchronized
     fun applyZupt(): ZuptOutput {
 
@@ -385,65 +390,41 @@ class Eskf(
      * ------------------------------------------------------------------
      */
 
-    /**
-     * Returns a copy of the current nominal navigation state.
-     */
     @Synchronized
     fun getState(): NavigationState {
         return navigationState.copyState()
     }
 
-    /**
-     * Returns a copy of the current covariance matrix.
-     */
     @Synchronized
     fun getCovariance(): Array<DoubleArray> {
         return covariance.copyMatrix()
     }
 
-    /**
-     * Current position.
-     */
     @Synchronized
     fun getPosition(): Vec3 {
         return navigationState.position.copy()
     }
 
-    /**
-     * Current velocity.
-     */
     @Synchronized
     fun getVelocity(): Vec3 {
         return navigationState.velocity.copy()
     }
 
-    /**
-     * Current attitude.
-     */
     @Synchronized
     fun getAttitude(): Quaternion {
         return navigationState.attitude.copy()
     }
 
-    /**
-     * Current gyro bias.
-     */
     @Synchronized
     fun getGyroBias(): Vec3 {
         return navigationState.gyroBias.copy()
     }
 
-    /**
-     * Current accelerometer bias.
-     */
     @Synchronized
     fun getAccelBias(): Vec3 {
         return navigationState.accelBias.copy()
     }
 
-    /**
-     * Current state timestamp.
-     */
     @Synchronized
     fun getTimestampNanos(): Long {
         return navigationState.timestampNanos
@@ -463,6 +444,13 @@ class Eskf(
     @Synchronized
     fun getRejectedPredictionCount(): Long {
         return rejectedPredictionCount
+    }
+
+    @Synchronized
+    fun getLastPredictionResult():
+            EskfPrediction.PredictionResult? {
+
+        return lastPredictionResult
     }
 
     /*
@@ -513,15 +501,25 @@ class Eskf(
 
     /*
      * ------------------------------------------------------------------
-     * Prediction result diagnostics
+     * ZARU diagnostics
      * ------------------------------------------------------------------
      */
 
     @Synchronized
-    fun getLastPredictionResult():
-            EskfPrediction.PredictionResult? {
+    fun getAcceptedZaruCount(): Long {
+        return acceptedZaruCount
+    }
 
-        return lastPredictionResult
+    @Synchronized
+    fun getRejectedZaruCount(): Long {
+        return rejectedZaruCount
+    }
+
+    @Synchronized
+    fun getLastZaruResult():
+            EskfZaruUpdate.UpdateResult? {
+
+        return lastZaruResult
     }
 
     /*
@@ -530,10 +528,6 @@ class Eskf(
      * ------------------------------------------------------------------
      */
 
-    /**
-     * Checks whether the nominal state contains
-     * only finite values.
-     */
     @Synchronized
     fun isStateFinite(): Boolean {
 
@@ -544,9 +538,6 @@ class Eskf(
                 navigationState.accelBias.isFinite()
     }
 
-    /**
-     * Checks whether covariance is numerically valid.
-     */
     @Synchronized
     fun isCovarianceValid(): Boolean {
 
@@ -554,9 +545,6 @@ class Eskf(
                 covariance.hasValidDiagonal()
     }
 
-    /**
-     * Covariance diagnostic summary.
-     */
     @Synchronized
     fun covarianceDiagnostics(): String {
         return covariance.diagnosticSummary()
@@ -612,6 +600,12 @@ class Eskf(
             rejectedNhcCount =
                 rejectedNhcCount,
 
+            acceptedZaruCount =
+                acceptedZaruCount,
+
+            rejectedZaruCount =
+                rejectedZaruCount,
+
             stateFinite =
                 isStateFinite(),
 
@@ -627,20 +621,8 @@ class Eskf(
      * ------------------------------------------------------------------
      * Reset
      * ------------------------------------------------------------------
-     *
-     * Complete ESKF reset.
-     *
-     * Resets:
-     *
-     *  - position
-     *  - velocity
-     *  - attitude
-     *  - gyro bias
-     *  - accelerometer bias
-     *  - timestamp
-     *  - covariance
-     *  - diagnostics
      */
+
     @Synchronized
     fun reset() {
 
@@ -668,20 +650,21 @@ class Eskf(
         acceptedNhcCount = 0L
         rejectedNhcCount = 0L
 
+        acceptedZaruCount = 0L
+        rejectedZaruCount = 0L
+
         lastPredictionResult = null
         lastZuptResult = null
         lastNhcResult = null
+        lastZaruResult = null
     }
 
     /*
      * ------------------------------------------------------------------
      * Sensor timeline reset
      * ------------------------------------------------------------------
-     *
-     * Resets only the IMU timeline.
-     *
-     * State and covariance are retained.
      */
+
     @Synchronized
     fun resetSensorTimeline() {
 
@@ -694,11 +677,8 @@ class Eskf(
      * ------------------------------------------------------------------
      * Initial state
      * ------------------------------------------------------------------
-     *
-     * Sets the initial nominal navigation state.
-     *
-     * Covariance remains unchanged.
      */
+
     @Synchronized
     fun setInitialState(
         position: Vec3 = Vec3.ZERO,
@@ -755,6 +735,7 @@ class Eskf(
         lastPredictionResult = null
         lastZuptResult = null
         lastNhcResult = null
+        lastZaruResult = null
     }
 
     /*
@@ -837,6 +818,10 @@ data class EskfDiagnostics(
     val acceptedNhcCount: Long,
 
     val rejectedNhcCount: Long,
+
+    val acceptedZaruCount: Long,
+
+    val rejectedZaruCount: Long,
 
     val stateFinite: Boolean,
 
