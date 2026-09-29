@@ -13,7 +13,7 @@ import java.util.Locale
 /**
  * ASTRA-Motion
  *
- * V7 / Supreme motion model.
+ * V7 / Supreme Motion Model
  *
  * Input:
  *      10 timesteps x 6 features
@@ -29,10 +29,16 @@ import java.util.Locale
  *
  * Each row represents one 100 ms timestep.
  *
+ * Actual ONNX outputs:
+ *
+ *      disp_pred
+ *      ori_pred
+ *      zupt_logits
+ *      router_weights
+ *
  * IMPORTANT:
- * Output semantics are intentionally NOT guessed.
- * Raw ONNX tensors are preserved until the actual
- * exported ONNX output contract is confirmed.
+ * Output tensors are decoded by their ONNX names,
+ * NOT by assumed output indexes.
  */
 class AstraMotionEngine(context: Context) {
 
@@ -42,6 +48,15 @@ class AstraMotionEngine(context: Context) {
 
         private const val WINDOW_SIZE = 10
         private const val FEATURE_COUNT = 6
+
+        // -------------------------------------------------------------
+        // Actual ONNX output names
+        // -------------------------------------------------------------
+
+        private const val OUTPUT_DISPLACEMENT = "disp_pred"
+        private const val OUTPUT_ORIENTATION = "ori_pred"
+        private const val OUTPUT_ZUPT = "zupt_logits"
+        private const val OUTPUT_ROUTER = "router_weights"
     }
 
     private val env =
@@ -172,6 +187,24 @@ class AstraMotionEngine(context: Context) {
             }
 
             // ---------------------------------------------------------
+            // OUTPUT SCALER VALIDATION
+            // ---------------------------------------------------------
+
+            require(
+                tempDispScaler.scale.isFinite() &&
+                        tempDispScaler.scale != 0.0
+            ) {
+                "Invalid ASTRA-Motion displacement scaler"
+            }
+
+            require(
+                tempOriScaler.scale.isFinite() &&
+                        tempOriScaler.scale != 0.0
+            ) {
+                "Invalid ASTRA-Motion orientation scaler"
+            }
+
+            // ---------------------------------------------------------
             // LOG MODEL METADATA
             // ---------------------------------------------------------
 
@@ -256,12 +289,13 @@ class AstraMotionEngine(context: Context) {
             scaler
                 ?: return null
 
-        if (
-            displacementScaler == null ||
-            orientationScaler == null
-        ) {
-            return null
-        }
+        val activeDispScaler =
+            displacementScaler
+                ?: return null
+
+        val activeOriScaler =
+            orientationScaler
+                ?: return null
 
         // ---------------------------------------------------------
         // 6 FEATURES
@@ -315,7 +349,7 @@ class AstraMotionEngine(context: Context) {
         }
 
         // ---------------------------------------------------------
-        // SCALE
+        // SCALE INPUT
         // ---------------------------------------------------------
 
         val scaled =
@@ -337,6 +371,10 @@ class AstraMotionEngine(context: Context) {
             scaled
         )
 
+        // ---------------------------------------------------------
+        // WAIT UNTIL 10 SAMPLES
+        // ---------------------------------------------------------
+
         if (
             window.size < WINDOW_SIZE
         ) {
@@ -344,18 +382,20 @@ class AstraMotionEngine(context: Context) {
         }
 
         return runInference(
-            activeSession
+            activeSession,
+            activeDispScaler,
+            activeOriScaler
         )
     }
 
     /**
-     * Execute ONNX inference.
-     *
-     * Semantic output decoding is deliberately disabled
-     * until the actual ONNX output names/shapes are known.
+     * Execute ONNX inference and decode the actual
+     * ASTRA-Motion output contract.
      */
     private fun runInference(
-        activeSession: OrtSession
+        activeSession: OrtSession,
+        activeDispScaler: OutputScaler,
+        activeOriScaler: OutputScaler
     ): AstraMotionOutput? {
 
         val start =
@@ -440,30 +480,50 @@ class AstraMotionEngine(context: Context) {
                     }
 
                     // -------------------------------------------------
-                    // RAW OUTPUTS
+                    // RAW OUTPUTS BY NAME
                     // -------------------------------------------------
 
-                    val rawOutputs = outputs.map { output ->
+                    val rawOutputsByName =
+                        linkedMapOf<String, FloatArray>()
 
-                        val name = output.key
-                        val onnxValue = output.value
+                    outputs.forEach { output ->
+
+                        val name =
+                            output.key
+
+                        val onnxValue =
+                            output.value
+
+                        val values =
+                            OnnxModelUtils.flattenOutput(
+                                onnxValue
+                            )
+
+                        rawOutputsByName[name] =
+                            values
 
                         Log.d(
                             TAG,
-                            "OUTPUT RAW name=$name type=${onnxValue.javaClass.name} " +
-                                    "onnxType=${onnxValue.type}"
+                            "OUTPUT name=$name " +
+                                    "size=${values.size} " +
+                                    "values=${
+                                        values
+                                            .take(20)
+                                            .joinToString(", ")
+                                    }"
                         )
-
-                        val values = OnnxModelUtils.flattenOutput(onnxValue)
-
-                        Log.d(
-                            TAG,
-                            "OUTPUT DATA name=$name size=${values.size} " +
-                                    "values=${values.take(20).joinToString(", ")}"
-                        )
-
-                        values
                     }
+
+                    // -------------------------------------------------
+                    // PRESERVE OUTPUT ORDER
+                    // -------------------------------------------------
+
+                    val rawOutputs =
+                        activeSession
+                            .outputNames
+                            .mapNotNull { name ->
+                                rawOutputsByName[name]
+                            }
 
                     // -------------------------------------------------
                     // VALIDATION
@@ -480,38 +540,75 @@ class AstraMotionEngine(context: Context) {
                                 }
 
                     // -------------------------------------------------
-                    // LOG EACH OUTPUT
+                    // DECODE DISPLACEMENT
                     // -------------------------------------------------
 
-                    rawOutputs.forEachIndexed {
-                            outputIndex,
-                            values ->
+                    val displacementScaled =
+                        rawOutputsByName[
+                            OUTPUT_DISPLACEMENT
+                        ]?.firstOrNull()
 
-                        val outputName =
-                            activeSession
-                                .outputNames
-                                .elementAtOrNull(
-                                    outputIndex
+                    val displacementM =
+                        displacementScaled
+                            ?.takeIf {
+                                it.isFinite()
+                            }
+                            ?.toDouble()
+                            ?.let {
+                                activeDispScaler.inverse(
+                                    it
                                 )
-                                ?: "unknown"
+                            }
 
-                        Log.d(
-                            TAG,
-                            String.format(
-                                Locale.US,
-                                "OUTPUT[%d] " +
-                                        "name=%s " +
-                                        "size=%d " +
-                                        "values=%s",
-                                outputIndex,
-                                outputName,
-                                values.size,
-                                values
-                                    .take(12)
-                                    .joinToString()
-                            )
-                        )
-                    }
+                    // -------------------------------------------------
+                    // DECODE ORIENTATION
+                    // -------------------------------------------------
+
+                    val orientationScaled =
+                        rawOutputsByName[
+                            OUTPUT_ORIENTATION
+                        ]?.firstOrNull()
+
+                    val orientationChangeRad =
+                        orientationScaled
+                            ?.takeIf {
+                                it.isFinite()
+                            }
+                            ?.toDouble()
+                            ?.let {
+                                activeOriScaler.inverse(
+                                    it
+                                )
+                            }
+
+                    // -------------------------------------------------
+                    // DECODE ZUPT LOGIT
+                    // -------------------------------------------------
+
+                    val zuptScore =
+                        rawOutputsByName[
+                            OUTPUT_ZUPT
+                        ]?.firstOrNull()
+                            ?.takeIf {
+                                it.isFinite()
+                            }
+                            ?.toDouble()
+
+                    // -------------------------------------------------
+                    // ROUTER WEIGHTS
+                    //
+                    // Not decoded into AstraMotionOutput yet.
+                    // They remain available through rawOutputs.
+                    // -------------------------------------------------
+
+                    val routerWeights =
+                        rawOutputsByName[
+                            OUTPUT_ROUTER
+                        ]
+
+                    // -------------------------------------------------
+                    // LATENCY
+                    // -------------------------------------------------
 
                     val latency =
                         (
@@ -519,82 +616,58 @@ class AstraMotionEngine(context: Context) {
                                         start
                                 ) / 1_000_000L
 
+                    // -------------------------------------------------
+                    // DETAILED DEBUG LOG
+                    // -------------------------------------------------
+
                     Log.i(
                         TAG,
                         String.format(
                             Locale.US,
-                            "INFERENCE valid=%s " +
-                                    "outputs=%d " +
+                            "ASTRA-Motion decoded " +
+                                    "valid=%s " +
+                                    "disp=%.6f m " +
+                                    "ori=%.6f rad " +
+                                    "zuptLogit=%.6f " +
+                                    "router=%s " +
                                     "latency=%dms",
                             valid,
-                            rawOutputs.size,
+                            displacementM ?: Double.NaN,
+                            orientationChangeRad
+                                ?: Double.NaN,
+                            zuptScore ?: Double.NaN,
+                            routerWeights
+                                ?.joinToString(
+                                    prefix = "[",
+                                    postfix = "]"
+                                )
+                                ?: "null",
                             latency
                         )
                     )
 
-                    val rawOutputsByName = linkedMapOf<String, FloatArray>()
-
-                    outputs.forEach { output ->
-
-                        val name = output.key
-                        val onnxValue = output.value
-
-                        Log.d(
-                            TAG,
-                            "OUTPUT RAW name=$name " +
-                                    "class=${onnxValue.javaClass.name} " +
-                                    "type=${onnxValue.type}"
-                        )
-
-                        val values = OnnxModelUtils.flattenOutput(onnxValue)
-
-                        rawOutputsByName[name] = values
-
-                        Log.d(
-                            TAG,
-                            "OUTPUT DATA name=$name " +
-                                    "size=${values.size} " +
-                                    "values=${values.take(20).joinToString(", ")}"
-                        )
-
-                        val rawOutputs = rawOutputsByName.values.toList()
-
-                        val valid =
-                            rawOutputs.isNotEmpty() &&
-                                    rawOutputs.all { values ->
-                                        values.isNotEmpty() &&
-                                                values.all { it.isFinite() }
-                                    }
-                    }
-
-
-                    /*
-                     * IMPORTANT:
-                     *
-                     * We intentionally do NOT do:
-                     *
-                     * output[0] = displacement
-                     * output[1] = orientation
-                     *
-                     * yet.
-                     */
+                    // -------------------------------------------------
+                    // FINAL OUTPUT
+                    // -------------------------------------------------
 
                     return AstraMotionOutput(
 
                         displacementM =
-                            null,
+                            displacementM,
 
                         orientationChangeRad =
-                            null,
+                            orientationChangeRad,
 
                         zuptScore =
-                            null,
+                            zuptScore,
 
                         rawOutputs =
                             rawOutputs,
 
                         valid =
-                            valid,
+                            valid &&
+                                    displacementM != null &&
+                                    orientationChangeRad != null,
 
                         inferenceMs =
                             latency
@@ -619,20 +692,18 @@ class AstraMotionEngine(context: Context) {
 
             return null
         }
-
-
-
     }
 
     /**
      * Resolve actual ONNX tensor shape.
      *
-     * The important part here is:
+     * Supports:
      *
-     *      ValueInfo -> TensorInfo -> shape
+     *      [1, 10, 6]
      *
-     * ONNX Runtime exposes generic ValueInfo,
-     * therefore we explicitly cast it to TensorInfo.
+     * and:
+     *
+     *      [10, 6]
      */
     private fun resolveInputShape(
         activeSession: OrtSession
@@ -903,17 +974,25 @@ class AstraMotionEngine(context: Context) {
     /**
      * Output scaler.
      *
-     * Kept for semantic decoding later.
+     * Inverse:
+     *
+     * raw =
+     *      ((scaled - min_offset) / scale)
+     *      + data_min
      */
     data class OutputScaler(
 
-        val data_min: Double = 0.0,
+        val data_min:
+        Double = 0.0,
 
-        val data_max: Double = 1.0,
+        val data_max:
+        Double = 1.0,
 
-        val scale: Double = 1.0,
+        val scale:
+        Double = 1.0,
 
-        val min_offset: Double = 0.0
+        val min_offset:
+        Double = 0.0
     ) {
 
         fun inverse(

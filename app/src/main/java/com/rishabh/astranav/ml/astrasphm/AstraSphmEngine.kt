@@ -8,16 +8,55 @@ import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import com.rishabh.astranav.sensor.ImuSample
 import kotlin.math.abs
+import kotlin.math.exp
 
-
+/**
+ * Runtime engine for ASTRA-SPHM.
+ *
+ * ASTRA-SPHM is the renamed V8 state-conditioned dead-reckoning model.
+ *
+ * Responsibilities:
+ *  - maintain the 20 x 6 IMU window
+ *  - normalize model inputs
+ *  - provide optional initial-speed state input
+ *  - execute ONNX inference
+ *  - decode all V8/ASTRA-SPHM output heads
+ *  - denormalize model outputs
+ *  - expose model uncertainty/log-variance
+ *  - perform basic physical sanity validation
+ *
+ * This class does NOT:
+ *  - modify ESKF state
+ *  - perform ZUPT updates
+ *  - perform map matching
+ *  - override the navigation state
+ *
+ * Those responsibilities belong to the navigation/fusion layer.
+ */
 class AstraSphmEngine(
     private val context: Context
-) {
+) : AutoCloseable {
 
     companion object {
         private const val TAG = "ASTRA_SPHM"
-    }
 
+        private const val SAMPLE_RATE_HZ = 10L
+        private const val MIN_SAMPLE_INTERVAL_NS =
+            1_000_000_000L / SAMPLE_RATE_HZ
+
+        private const val MAX_REASONABLE_SPEED_MPS = 80.0
+
+        /*
+         * Log-variance safety limits.
+         *
+         * sigma = exp(0.5 * logVariance)
+         *
+         * These limits prevent malformed model output from producing
+         * Infinity/NaN and poisoning later fusion code.
+         */
+        private const val MIN_LOG_VARIANCE = -20.0
+        private const val MAX_LOG_VARIANCE = 10.0
+    }
 
     // ============================================================
     // ONNX RUNTIME
@@ -32,7 +71,6 @@ class AstraSphmEngine(
 
     private var initialized = false
 
-
     // ============================================================
     // FEATURE PIPELINE
     // ============================================================
@@ -43,6 +81,18 @@ class AstraSphmEngine(
     private val preprocessor =
         AstraSphmPreprocessor()
 
+    // ============================================================
+    // TIMESTAMP PROTECTION
+    // ============================================================
+
+    /**
+     * Last sample accepted by this model engine.
+     *
+     * SensorAdapter is still responsible for the actual 10 Hz
+     * synchronization/resampling. This value only protects the model
+     * from accidental duplicate or excessively fast calls.
+     */
+    private var lastAcceptedTimestampNs = 0L
 
     // ============================================================
     // INITIALIZATION
@@ -58,7 +108,6 @@ class AstraSphmEngine(
 
             Log.d(TAG, "Initializing ASTRA-SPHM...")
 
-
             // ----------------------------------------------------
             // Load ONNX model
             // ----------------------------------------------------
@@ -70,6 +119,9 @@ class AstraSphmEngine(
                     it.readBytes()
                 }
 
+            require(modelBytes.isNotEmpty()) {
+                "ASTRA-SPHM model asset is empty"
+            }
 
             // ----------------------------------------------------
             // ORT session
@@ -84,7 +136,6 @@ class AstraSphmEngine(
                     options
                 )
 
-
             // ----------------------------------------------------
             // Input names
             // ----------------------------------------------------
@@ -95,16 +146,26 @@ class AstraSphmEngine(
                     ?.toList()
                     ?: emptyList()
 
+            require(inputNames.isNotEmpty()) {
+                "ASTRA-SPHM ONNX model has no inputs"
+            }
+
             Log.d(
                 TAG,
                 "Model input names=$inputNames"
             )
 
+            val outputNames =
+                session
+                    ?.outputInfo
+                    ?.keys
+                    ?.toList()
+                    ?: emptyList()
+
             Log.d(
                 TAG,
-                "Model output names=${session?.outputInfo?.keys?.toList()}"
+                "Model output names=$outputNames"
             )
-
 
             inputName =
                 inputNames.firstOrNull()
@@ -114,7 +175,6 @@ class AstraSphmEngine(
             ) {
                 "ASTRA-SPHM ONNX input name not found"
             }
-
 
             initialized = true
 
@@ -141,7 +201,6 @@ class AstraSphmEngine(
         }
     }
 
-
     // ============================================================
     // ADD IMU SAMPLE
     // ============================================================
@@ -165,13 +224,58 @@ class AstraSphmEngine(
             }
         }
 
+        // --------------------------------------------------------
+        // Validate timestamp
+        // --------------------------------------------------------
+
+        val timestampNs =
+            sample.timestampNanos
+
+        if (timestampNs > 0L) {
+
+            if (
+                lastAcceptedTimestampNs != 0L &&
+                timestampNs <= lastAcceptedTimestampNs
+            ) {
+                return AstraSphmOutput(
+                    valid = false,
+                    errorMessage =
+                        "ASTRA-SPHM ignored duplicate/out-of-order sample"
+                )
+            }
+
+            if (
+                lastAcceptedTimestampNs != 0L &&
+                timestampNs - lastAcceptedTimestampNs <
+                MIN_SAMPLE_INTERVAL_NS
+            ) {
+                return AstraSphmOutput(
+                    valid = false,
+                    errorMessage =
+                        "ASTRA-SPHM waiting for 10 Hz sample interval"
+                )
+            }
+
+            lastAcceptedTimestampNs =
+                timestampNs
+        }
+
+        // --------------------------------------------------------
+        // Validate initial speed
+        // --------------------------------------------------------
+
+        if (!initialSpeedMps.isFinite()) {
+
+            return AstraSphmOutput.invalid(
+                "ASTRA-SPHM received non-finite initial speed"
+            )
+        }
 
         // --------------------------------------------------------
         // Add sample
         // --------------------------------------------------------
 
         featureBuilder.addSample(sample)
-
 
         // --------------------------------------------------------
         // Wait for 20 samples
@@ -188,12 +292,10 @@ class AstraSphmEngine(
             )
         }
 
-
         return infer(
             initialSpeedMps = initialSpeedMps
         )
     }
-
 
     // ============================================================
     // ADD RAW FEATURES
@@ -218,9 +320,45 @@ class AstraSphmEngine(
             }
         }
 
+        if (!initialSpeedMps.isFinite()) {
+
+            return AstraSphmOutput.invalid(
+                "ASTRA-SPHM received non-finite initial speed"
+            )
+        }
+
+        // --------------------------------------------------------
+        // Validate feature vector
+        // --------------------------------------------------------
+
+        if (
+            features.size !=
+            AstraSphmModelMetadata.FEATURE_COUNT
+        ) {
+
+            return AstraSphmOutput.invalid(
+                "ASTRA-SPHM expected " +
+                        "${AstraSphmModelMetadata.FEATURE_COUNT} features, " +
+                        "received ${features.size}"
+            )
+        }
+
+        if (features.any { !it.isFinite() }) {
+
+            return AstraSphmOutput.invalid(
+                "ASTRA-SPHM received non-finite feature values"
+            )
+        }
+
+        // --------------------------------------------------------
+        // Add raw features
+        // --------------------------------------------------------
 
         featureBuilder.addFeatures(features)
 
+        // --------------------------------------------------------
+        // Wait for 20 samples
+        // --------------------------------------------------------
 
         if (!featureBuilder.isReady()) {
 
@@ -233,12 +371,10 @@ class AstraSphmEngine(
             )
         }
 
-
         return infer(
             initialSpeedMps = initialSpeedMps
         )
     }
-
 
     // ============================================================
     // INFERENCE
@@ -251,13 +387,11 @@ class AstraSphmEngine(
         val started =
             System.nanoTime()
 
-
         val currentSession =
             session
                 ?: return AstraSphmOutput.invalid(
                     "ASTRA-SPHM session is null"
                 )
-
 
         val currentInputName =
             inputName
@@ -265,13 +399,9 @@ class AstraSphmEngine(
                     "ASTRA-SPHM input name is null"
                 )
 
-
         var primaryTensor: OnnxTensor? = null
-
         var speedTensor: OnnxTensor? = null
-
         var result: OrtSession.Result? = null
-
 
         return try {
 
@@ -285,6 +415,16 @@ class AstraSphmEngine(
                         "ASTRA-SPHM window unavailable"
                     )
 
+            if (
+                rawWindow.size !=
+                AstraSphmModelMetadata.WINDOW_SIZE
+            ) {
+
+                return AstraSphmOutput.invalid(
+                    "ASTRA-SPHM invalid window size: " +
+                            rawWindow.size
+                )
+            }
 
             // ====================================================
             // NORMALIZATION
@@ -295,15 +435,42 @@ class AstraSphmEngine(
                     rawWindow
                 )
 
+            // Validate normalized input.
+
+            for (row in normalizedWindow) {
+
+                if (
+                    row.size !=
+                    AstraSphmModelMetadata.FEATURE_COUNT
+                ) {
+
+                    return AstraSphmOutput.invalid(
+                        "ASTRA-SPHM normalized row has invalid feature count"
+                    )
+                }
+
+                if (row.any { !it.isFinite() }) {
+
+                    return AstraSphmOutput.invalid(
+                        "ASTRA-SPHM normalization produced non-finite values"
+                    )
+                }
+            }
 
             val speedNormalized =
                 preprocessor.normalizeInitialSpeed(
                     initialSpeedMps
                 )
 
+            if (!speedNormalized.isFinite()) {
+
+                return AstraSphmOutput.invalid(
+                    "ASTRA-SPHM speed normalization produced non-finite value"
+                )
+            }
 
             // ====================================================
-            // IMU INPUT
+            // MODEL INPUT
             //
             // Shape:
             // [1, 20, 6]
@@ -320,7 +487,6 @@ class AstraSphmEngine(
                     }
                 }
 
-
             // ====================================================
             // MODEL INPUTS
             // ====================================================
@@ -328,10 +494,8 @@ class AstraSphmEngine(
             val inputNames =
                 currentSession.inputNames.toList()
 
-
             val tensors =
                 mutableMapOf<String, OnnxTensor>()
-
 
             primaryTensor =
                 OnnxTensor.createTensor(
@@ -339,10 +503,8 @@ class AstraSphmEngine(
                     imuInput
                 )
 
-
             tensors[currentInputName] =
                 primaryTensor
-
 
             // ====================================================
             // OPTIONAL INITIAL SPEED INPUT
@@ -355,29 +517,26 @@ class AstraSphmEngine(
                         it != currentInputName
                     }
 
-
                 if (speedInputName != null) {
 
                     speedTensor =
                         OnnxTensor.createTensor(
                             environment,
                             floatArrayOf(
-                                speedNormalized
+                                speedNormalized.toFloat()
                             )
                         )
-
 
                     tensors[speedInputName] =
                         speedTensor
 
-
                     Log.d(
                         TAG,
-                        "Initial speed input=$speedInputName normalized=$speedNormalized"
+                        "Initial speed input=$speedInputName " +
+                                "normalized=$speedNormalized"
                     )
                 }
             }
-
 
             // ====================================================
             // RUN MODEL
@@ -388,25 +547,17 @@ class AstraSphmEngine(
                     tensors
                 )
 
-
             // ====================================================
-            // VERIFIED OUTPUT NAMES
+            // OUTPUT NAMES
             // ====================================================
 
             val outputNames =
                 currentSession.outputInfo.keys.toList()
 
-
             Log.d(
                 TAG,
                 "Model output names=$outputNames"
             )
-
-            Log.d(
-                TAG,
-                "Model output count=${outputNames.size}"
-            )
-
 
             // ====================================================
             // FIND OUTPUTS
@@ -414,66 +565,52 @@ class AstraSphmEngine(
 
             val speedOutput =
                 findOutput(
-                    result = result,
-                    outputNames = outputNames,
-                    semanticName =
-                        AstraSphmModelMetadata.OUTPUT_SPEED
+                    result,
+                    outputNames,
+                    AstraSphmModelMetadata.OUTPUT_SPEED
                 )
-
 
             val speedVarianceOutput =
                 findOutput(
-                    result = result,
-                    outputNames = outputNames,
-                    semanticName =
-                        AstraSphmModelMetadata.OUTPUT_SPEED_LOG_VARIANCE
+                    result,
+                    outputNames,
+                    AstraSphmModelMetadata.OUTPUT_SPEED_LOG_VARIANCE
                 )
-
 
             val positionOutput =
                 findOutput(
-                    result = result,
-                    outputNames = outputNames,
-                    semanticName =
-                        AstraSphmModelMetadata.OUTPUT_POSITION
+                    result,
+                    outputNames,
+                    AstraSphmModelMetadata.OUTPUT_POSITION
                 )
-
 
             val positionVarianceOutput =
                 findOutput(
-                    result = result,
-                    outputNames = outputNames,
-                    semanticName =
-                        AstraSphmModelMetadata.OUTPUT_POSITION_LOG_VARIANCE
+                    result,
+                    outputNames,
+                    AstraSphmModelMetadata.OUTPUT_POSITION_LOG_VARIANCE
                 )
-
 
             val headingOutput =
                 findOutput(
-                    result = result,
-                    outputNames = outputNames,
-                    semanticName =
-                        AstraSphmModelMetadata.OUTPUT_HEADING_DELTA
+                    result,
+                    outputNames,
+                    AstraSphmModelMetadata.OUTPUT_HEADING_DELTA
                 )
-
 
             val headingVarianceOutput =
                 findOutput(
-                    result = result,
-                    outputNames = outputNames,
-                    semanticName =
-                        AstraSphmModelMetadata.OUTPUT_HEADING_DELTA_LOG_VARIANCE
+                    result,
+                    outputNames,
+                    AstraSphmModelMetadata.OUTPUT_HEADING_DELTA_LOG_VARIANCE
                 )
-
 
             val motionOutput =
                 findOutput(
-                    result = result,
-                    outputNames = outputNames,
-                    semanticName =
-                        AstraSphmModelMetadata.OUTPUT_MOTION_LOGITS
+                    result,
+                    outputNames,
+                    AstraSphmModelMetadata.OUTPUT_MOTION_LOGITS
                 )
-
 
             // ====================================================
             // FLATTEN OUTPUTS
@@ -482,70 +619,23 @@ class AstraSphmEngine(
             val speedValues =
                 flattenOutput(speedOutput)
 
-
             val speedVarianceValues =
                 flattenOutput(speedVarianceOutput)
-
 
             val positionValues =
                 flattenOutput(positionOutput)
 
-
             val positionVarianceValues =
                 flattenOutput(positionVarianceOutput)
-
 
             val headingValues =
                 flattenOutput(headingOutput)
 
-
             val headingVarianceValues =
                 flattenOutput(headingVarianceOutput)
 
-
             val motionValues =
                 flattenOutput(motionOutput)
-
-
-            // ====================================================
-            // LOG RAW OUTPUTS
-            // ====================================================
-
-            Log.d(
-                TAG,
-                "speedValues=${speedValues.contentToString()}"
-            )
-
-            Log.d(
-                TAG,
-                "speedLogVarianceValues=${speedVarianceValues.contentToString()}"
-            )
-
-            Log.d(
-                TAG,
-                "positionValues=${positionValues.contentToString()}"
-            )
-
-            Log.d(
-                TAG,
-                "positionLogVarianceValues=${positionVarianceValues.contentToString()}"
-            )
-
-            Log.d(
-                TAG,
-                "headingValues=${headingValues.contentToString()}"
-            )
-
-            Log.d(
-                TAG,
-                "headingLogVarianceValues=${headingVarianceValues.contentToString()}"
-            )
-
-            Log.d(
-                TAG,
-                "motionValues=${motionValues.contentToString()}"
-            )
-
 
             // ====================================================
             // SPEED
@@ -554,24 +644,36 @@ class AstraSphmEngine(
             val speedMps =
                 if (speedValues.isNotEmpty()) {
 
-                    preprocessor.denormalizeSpeed(
-                        speedValues[0].toDouble()
-                    )
+                    val rawSpeed =
+                        preprocessor.denormalizeSpeed(
+                            speedValues[0].toDouble()
+                        )
+
+                    if (rawSpeed.isFinite()) {
+                        rawSpeed.coerceAtLeast(0.0)
+                    } else {
+                        null
+                    }
 
                 } else {
                     null
                 }
 
-
             val speedKmh =
                 speedMps?.times(3.6)
-
 
             val speedLogVariance =
                 speedVarianceValues
                     .firstOrNull()
                     ?.toDouble()
+                    ?.takeIf { it.isFinite() }
 
+            // Convert uncertainty for diagnostics only.
+            // The existing AstraSphmOutput contract remains unchanged.
+            val speedSigmaMps =
+                speedLogVariance?.let {
+                    sigmaFromLogVariance(it)
+                }
 
             // ====================================================
             // POSITION
@@ -589,25 +691,35 @@ class AstraSphmEngine(
                     null
                 }
 
-
             val positionX =
                 position?.first
+                    ?.takeIf { it.isFinite() }
 
             val positionY =
                 position?.second
-
+                    ?.takeIf { it.isFinite() }
 
             val positionLogVarianceX =
                 positionVarianceValues
                     .getOrNull(0)
                     ?.toDouble()
-
+                    ?.takeIf { it.isFinite() }
 
             val positionLogVarianceY =
                 positionVarianceValues
                     .getOrNull(1)
                     ?.toDouble()
+                    ?.takeIf { it.isFinite() }
 
+            val positionSigmaX =
+                positionLogVarianceX?.let {
+                    sigmaFromLogVariance(it)
+                }
+
+            val positionSigmaY =
+                positionLogVarianceY?.let {
+                    sigmaFromLogVariance(it)
+                }
 
             // ====================================================
             // HEADING DELTA
@@ -624,18 +736,46 @@ class AstraSphmEngine(
                     null
                 }
 
+            val safeHeadingDeltaRad =
+                headingDeltaRad
+                    ?.takeIf { it.isFinite() }
 
             val headingDeltaDeg =
-                headingDeltaRad?.times(
+                safeHeadingDeltaRad?.times(
                     180.0 / Math.PI
                 )
-
 
             val headingDeltaLogVariance =
                 headingVarianceValues
                     .firstOrNull()
                     ?.toDouble()
+                    ?.takeIf { it.isFinite() }
 
+            val headingSigmaRad =
+                headingDeltaLogVariance?.let {
+                    sigmaFromLogVariance(it)
+                }
+
+            // ====================================================
+            // DIAGNOSTIC UNCERTAINTY LOG
+            // ====================================================
+
+            Log.d(
+                TAG,
+                "Prediction: " +
+                        "speed=${speedMps?.let { "%.3f".format(it) } ?: "--"} m/s " +
+                        "speedSigma=${speedSigmaMps?.let { "%.3f".format(it) } ?: "--"} " +
+                        "position=(" +
+                        "${positionX?.let { "%.3f".format(it) } ?: "--"}, " +
+                        "${positionY?.let { "%.3f".format(it) } ?: "--"}) " +
+                        "positionSigma=(" +
+                        "${positionSigmaX?.let { "%.3f".format(it) } ?: "--"}, " +
+                        "${positionSigmaY?.let { "%.3f".format(it) } ?: "--"}) " +
+                        "headingDelta=" +
+                        "${headingDeltaDeg?.let { "%.2f".format(it) } ?: "--"} deg " +
+                        "headingSigma=" +
+                        "${headingSigmaRad?.let { "%.4f".format(it) } ?: "--"} rad"
+            )
 
             // ====================================================
             // LATENCY
@@ -647,7 +787,6 @@ class AstraSphmEngine(
                                 started
                         ) / 1_000_000L
 
-
             // ====================================================
             // PHYSICAL VALIDATION
             // ====================================================
@@ -657,9 +796,8 @@ class AstraSphmEngine(
                     speedMps = speedMps,
                     positionX = positionX,
                     positionY = positionY,
-                    headingDeltaRad = headingDeltaRad
+                    headingDeltaRad = safeHeadingDeltaRad
                 )
-
 
             if (!valid) {
 
@@ -669,7 +807,6 @@ class AstraSphmEngine(
                     latencyMs = latencyMs
                 )
             }
-
 
             // ====================================================
             // FINAL OUTPUT
@@ -686,7 +823,6 @@ class AstraSphmEngine(
                 speedLogVariance =
                     speedLogVariance,
 
-
                 positionX =
                     positionX,
 
@@ -699,9 +835,8 @@ class AstraSphmEngine(
                 positionLogVarianceY =
                     positionLogVarianceY,
 
-
                 headingDeltaRad =
-                    headingDeltaRad,
+                    safeHeadingDeltaRad,
 
                 headingDeltaDeg =
                     headingDeltaDeg,
@@ -709,15 +844,12 @@ class AstraSphmEngine(
                 headingDeltaLogVariance =
                     headingDeltaLogVariance,
 
-
                 motionLogits =
                     motionValues,
-
 
                 latencyMs =
                     latencyMs
             )
-
 
         } catch (e: Exception) {
 
@@ -727,19 +859,11 @@ class AstraSphmEngine(
                                 started
                         ) / 1_000_000L
 
-
             Log.e(
                 TAG,
                 "ASTRA-SPHM inference failed",
                 e
             )
-
-
-            Log.d(
-                TAG,
-                "INPUT names=${currentSession.inputInfo.keys}"
-            )
-
 
             AstraSphmOutput.invalid(
                 message =
@@ -769,9 +893,8 @@ class AstraSphmEngine(
         }
     }
 
-
     // ============================================================
-    // FIND OUTPUT BY ACTUAL ONNX NAME
+    // FIND OUTPUT BY SEMANTIC NAME
     // ============================================================
 
     private fun findOutput(
@@ -794,26 +917,29 @@ class AstraSphmEngine(
                         )
             }
 
-
         if (matchedIndex >= 0) {
 
             return try {
                 result[matchedIndex]
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+
+                Log.w(
+                    TAG,
+                    "Unable to access output $semanticName",
+                    e
+                )
+
                 null
             }
         }
-
 
         Log.w(
             TAG,
             "Output not found: $semanticName"
         )
 
-
         return null
     }
-
 
     // ============================================================
     // FLATTEN ONNX OUTPUT
@@ -827,7 +953,6 @@ class AstraSphmEngine(
             return FloatArray(0)
         }
 
-
         return try {
 
             if (value is OnnxTensor) {
@@ -835,31 +960,25 @@ class AstraSphmEngine(
                 val buffer =
                     value.floatBuffer
 
-
                 if (buffer != null) {
 
                     val duplicate =
                         buffer.duplicate()
-
 
                     val output =
                         FloatArray(
                             duplicate.remaining()
                         )
 
-
                     duplicate.get(output)
-
 
                     return output
                 }
-
 
                 return flattenJavaValue(
                     value.value
                 )
             }
-
 
             flattenJavaValue(
                 value.value
@@ -877,7 +996,6 @@ class AstraSphmEngine(
         }
     }
 
-
     // ============================================================
     // FLATTEN JAVA ARRAYS
     // ============================================================
@@ -891,7 +1009,6 @@ class AstraSphmEngine(
             is FloatArray ->
                 value.copyOf()
 
-
             is DoubleArray ->
                 FloatArray(
                     value.size
@@ -899,34 +1016,28 @@ class AstraSphmEngine(
                     value[it].toFloat()
                 }
 
-
             is Float ->
                 floatArrayOf(value)
-
 
             is Double ->
                 floatArrayOf(
                     value.toFloat()
                 )
 
-
             is Int ->
                 floatArrayOf(
                     value.toFloat()
                 )
-
 
             is Long ->
                 floatArrayOf(
                     value.toFloat()
                 )
 
-
             is Array<*> -> {
 
                 val output =
                     ArrayList<Float>()
-
 
                 fun visit(item: Any?) {
 
@@ -935,30 +1046,25 @@ class AstraSphmEngine(
                         is Float ->
                             output.add(item)
 
-
                         is Double ->
                             output.add(
                                 item.toFloat()
                             )
-
 
                         is Int ->
                             output.add(
                                 item.toFloat()
                             )
 
-
                         is Long ->
                             output.add(
                                 item.toFloat()
                             )
 
-
                         is FloatArray ->
                             item.forEach {
                                 output.add(it)
                             }
-
 
                         is DoubleArray ->
                             item.forEach {
@@ -967,25 +1073,56 @@ class AstraSphmEngine(
                                 )
                             }
 
-
                         is Array<*> ->
                             item.forEach(::visit)
                     }
                 }
 
-
                 value.forEach(::visit)
-
 
                 output.toFloatArray()
             }
-
 
             else ->
                 FloatArray(0)
         }
     }
 
+    // ============================================================
+    // LOG-VARIANCE -> STANDARD DEVIATION
+    // ============================================================
+
+    /**
+     * Converts model log-variance into standard deviation.
+     *
+     * sigma = exp(0.5 * logVariance)
+     *
+     * This is used only for diagnostics in this engine.
+     * It does NOT automatically become an ESKF covariance.
+     */
+    private fun sigmaFromLogVariance(
+        logVariance: Double
+    ): Double {
+
+        if (!logVariance.isFinite()) {
+            return 0.0
+        }
+
+        val safe =
+            logVariance.coerceIn(
+                MIN_LOG_VARIANCE,
+                MAX_LOG_VARIANCE
+            )
+
+        val sigma =
+            exp(0.5 * safe)
+
+        return if (sigma.isFinite()) {
+            sigma
+        } else {
+            0.0
+        }
+    }
 
     // ============================================================
     // PHYSICAL VALIDATION
@@ -1002,20 +1139,19 @@ class AstraSphmEngine(
         // Speed
         // --------------------------------------------------------
 
-        if (
-            speedMps != null &&
-            (
-                    !speedMps.isFinite() ||
-                            speedMps < 0.0 ||
-                            speedMps > 80.0
-                    )
-        ) {
-            return false
+        if (speedMps != null) {
+
+            if (
+                !speedMps.isFinite() ||
+                speedMps < 0.0 ||
+                speedMps > MAX_REASONABLE_SPEED_MPS
+            ) {
+                return false
+            }
         }
 
-
         // --------------------------------------------------------
-        // Position X
+        // Position
         // --------------------------------------------------------
 
         if (
@@ -1025,11 +1161,6 @@ class AstraSphmEngine(
             return false
         }
 
-
-        // --------------------------------------------------------
-        // Position Y
-        // --------------------------------------------------------
-
         if (
             positionY != null &&
             !positionY.isFinite()
@@ -1037,22 +1168,20 @@ class AstraSphmEngine(
             return false
         }
 
-
         // --------------------------------------------------------
         // Heading
         // --------------------------------------------------------
 
-        if (
-            headingDeltaRad != null &&
-            (
-                    !headingDeltaRad.isFinite() ||
-                            abs(headingDeltaRad) >
-                            Math.PI * 4.0
-                    )
-        ) {
-            return false
-        }
+        if (headingDeltaRad != null) {
 
+            if (
+                !headingDeltaRad.isFinite() ||
+                abs(headingDeltaRad) >
+                Math.PI * 4.0
+            ) {
+                return false
+            }
+        }
 
         // --------------------------------------------------------
         // At least one meaningful prediction
@@ -1066,7 +1195,6 @@ class AstraSphmEngine(
                 )
     }
 
-
     // ============================================================
     // STATUS
     // ============================================================
@@ -1077,18 +1205,15 @@ class AstraSphmEngine(
                 featureBuilder.isReady()
     }
 
-
     fun windowProgress(): Float {
 
         return featureBuilder.progress()
     }
 
-
     fun windowSize(): Int {
 
         return featureBuilder.size()
     }
-
 
     // ============================================================
     // CLEAR WINDOW
@@ -1097,8 +1222,11 @@ class AstraSphmEngine(
     fun clearWindow() {
 
         featureBuilder.clear()
-    }
 
+        // Important: after clearing the model window, allow the
+        // next sample to start a completely fresh sequence.
+        lastAcceptedTimestampNs = 0L
+    }
 
     // ============================================================
     // INPUT NAMES
@@ -1113,7 +1241,6 @@ class AstraSphmEngine(
             ?: emptyList()
     }
 
-
     // ============================================================
     // OUTPUT NAMES
     // ============================================================
@@ -1127,25 +1254,23 @@ class AstraSphmEngine(
             ?: emptyList()
     }
 
-
     // ============================================================
     // CLOSE
     // ============================================================
 
-    fun close() {
+    override fun close() {
 
         try {
             session?.close()
         } catch (_: Exception) {
         }
 
-
         session = null
-
         initialized = false
-
         inputName = null
 
         featureBuilder.clear()
+
+        lastAcceptedTimestampNs = 0L
     }
 }
