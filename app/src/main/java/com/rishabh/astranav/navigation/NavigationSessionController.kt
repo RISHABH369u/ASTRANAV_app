@@ -18,7 +18,8 @@ import com.google.android.gms.location.Priority
 import com.rishabh.astranav.constraints.ZaruConstraint
 import com.rishabh.astranav.constraints.ZuptConstraint
 import com.rishabh.astranav.dvfc.DvfcCalibrationStore
-import com.rishabh.astranav.ml.TcnMotionEngine
+import com.rishabh.astranav.ml.gru.GruSpeedEngine
+import com.rishabh.astranav.ml.astramotion.AstraMotionEngine
 import com.rishabh.astranav.sensor.GnssSample
 import com.rishabh.astranav.sensor.ImuSample
 import com.rishabh.astranav.sensor.SensorAdapter
@@ -74,7 +75,12 @@ object NavigationSessionController : SensorEventListener {
     private val adapter = SensorAdapter()
     private val zupt = ZuptConstraint()
     private val zaru = ZaruConstraint()
-    private var tcn: TcnMotionEngine? = null
+    private var astraSpeed: GruSpeedEngine? = null
+    private var astraMotion: AstraMotionEngine? = null
+
+    private var previousTrustedSpeedKmh = 0.0
+    private var previousYawRate = 0.0
+    private var previousModelTimestampNs: Long? = null
 
     private var sensorManager: SensorManager? = null
     private var fusedLocationClient: FusedLocationProviderClient? = null
@@ -124,7 +130,29 @@ object NavigationSessionController : SensorEventListener {
             dvfcYawOffsetDeg = dvfc?.toEulerDegrees()?.get(2)?.toDouble(),
         )
 
-        if (tcn == null) tcn = runCatching { TcnMotionEngine(appContext) }.getOrNull()
+        astraSpeed = runCatching {
+            GruSpeedEngine(appContext)
+        }.onFailure {
+            android.util.Log.e(
+                "ASTRANAV_ML",
+                "Failed to load ASTRA-Speed",
+                it
+            )
+        }.getOrNull()
+
+        astraMotion = runCatching {
+            AstraMotionEngine(appContext)
+        }.onFailure {
+            android.util.Log.e(
+                "ASTRANAV_ML",
+                "Failed to load ASTRA-Motion",
+                it
+            )
+        }.getOrNull()
+
+        previousTrustedSpeedKmh = 0.0
+        previousYawRate = 0.0
+        previousModelTimestampNs = null
 
         sensorManager = (appContext.getSystemService(Context.SENSOR_SERVICE) as? SensorManager)?.also { sm ->
             sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)?.let { sm.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
@@ -208,8 +236,51 @@ object NavigationSessionController : SensorEventListener {
         accelWindow.addLast(accelMag)
         if (accelWindow.size > ACCEL_VARIANCE_WINDOW) accelWindow.removeFirst()
 
-        val ml = tcn?.add(imu)
-        val nav = engine.update(imu, dt, latestGnss, ml)
+//        val ml = tcn?.add(imu)
+//        val nav = engine.update(imu, dt, latestGnss, ml)
+        val speedOutput =
+            astraSpeed?.add(
+                sample = imu,
+                previousTrustedSpeedKmh = previousTrustedSpeedKmh
+            )
+
+        if (speedOutput?.valid == true) {
+
+            previousTrustedSpeedKmh =
+                speedOutput.speedKmh
+
+            android.util.Log.i(
+                "ASTRANAV_ML",
+                "ASTRA-Speed REAL OUTPUT = " +
+                        "${"%.2f".format(speedOutput.speedKmh)} km/h"
+            )
+        }
+        val ml =
+            speedOutput?.takeIf { it.valid }?.let {
+
+                com.rishabh.astranav.ml.MlMeasurement(
+                    speedMps = it.speedMps,
+
+                    // Conservative temporary fallback.
+                    // This is NOT claimed as calibrated model uncertainty.
+                    variance = 9.0,
+
+                    confidence = 0.5,
+
+                    valid = true
+                )
+            }
+
+        val nav =
+            engine.update(
+                imu,
+                dt,
+                latestGnss,
+                ml
+            )
+
+
+
 
         val gyroMag = sqrt(imu.gyroX * imu.gyroX + imu.gyroY * imu.gyroY + imu.gyroZ * imu.gyroZ)
         val motion = when {

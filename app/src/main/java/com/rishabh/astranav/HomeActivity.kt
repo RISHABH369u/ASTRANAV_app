@@ -128,7 +128,16 @@ class HomeActivity : AppCompatActivity() {
             Toast.makeText(this, "Map view isn't built yet", Toast.LENGTH_SHORT).show()
         }
 
-        findViewById<View>(R.id.btnInfo).setOnClickListener { openSensorCheck() }
+
+        findViewById<View>(R.id.btnInfo).setOnClickListener {
+            startActivity(
+                Intent(
+                    this,
+                    MLTestActivity::class.java
+                )
+            )
+        }
+
         findViewById<View>(R.id.systemStatusCard).setOnClickListener { openSensorCheck() }
         findViewById<View>(R.id.btnViewSystem).setOnClickListener { openSensorCheck() }
         findViewById<View>(R.id.btnStartNav).setOnClickListener {
