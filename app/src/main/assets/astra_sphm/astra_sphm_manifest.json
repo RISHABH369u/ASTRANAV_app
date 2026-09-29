@@ -1,0 +1,28 @@
+{
+  "model": "V8 state-conditioned heading-delta",
+  "input": {
+    "imu": [
+      20,
+      6
+    ],
+    "sample_rate_hz": 10,
+    "initial_speed": "normalized m/s"
+  },
+  "outputs": [
+    "speed",
+    "position",
+    "heading_delta",
+    "motion_logits"
+  ],
+  "checkpoint_epoch": 0,
+  "sha256": "f9dbbf12fd9c28acd8c5cb4f951c51afb2485bdcc27ee2278a293733ed246908",
+  "selection": "validation only; held-out test never used for selection",
+  "held_out_test": {
+    "samples": 118811,
+    "speed_mae_mps": 0.7478292584,
+    "position_rmse_m": 1.8506184816,
+    "motion_accuracy": 0.8112127665,
+    "trajectory_final_error_m": { "10s": 24.8399045728, "20s": 81.9704548109, "30s": 141.3888490999, "60s": 373.0491927899 }
+  },
+  "deployment_status": "experimental: does not meet SIH dead-reckoning drift target"
+}

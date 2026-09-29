@@ -15,6 +15,8 @@ import com.rishabh.astranav.ml.astramotion.AstraMotionOutput
 import com.rishabh.astranav.ml.gru.GruSpeedEngine
 import com.rishabh.astranav.ml.gru.GruSpeedOutput
 import com.rishabh.astranav.sensor.ImuSample
+import com.rishabh.astranav.ml.astrasphm.AstraSphmEngine
+import com.rishabh.astranav.ml.astrasphm.AstraSphmOutput
 import kotlin.math.sqrt
 import java.util.Locale
 
@@ -28,6 +30,7 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
 
     private lateinit var astraSpeed: GruSpeedEngine
     private lateinit var astraMotion: AstraMotionEngine
+    private lateinit var astraSphm: AstraSphmEngine
 
     private var latestAccel = FloatArray(3)
     private var latestGyro = FloatArray(3)
@@ -43,6 +46,8 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
 
     private var latestSpeedOutput: GruSpeedOutput? = null
     private var latestMotionOutput: AstraMotionOutput? = null
+    private var latestSphmOutput: AstraSphmOutput? = null
+
 
     private var dvfcTransform: Quat? = null
 
@@ -65,6 +70,11 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
     private lateinit var tvMotionRaw: TextView
     private lateinit var tvMotionProcessed: TextView
     private lateinit var tvMotionLatency: TextView
+
+    private lateinit var tvSphmWindow: TextView
+    private lateinit var tvSphmRaw: TextView
+    private lateinit var tvSphmProcessed: TextView
+    private lateinit var tvSphmLatency: TextView
 
     private lateinit var tvPriorSpeed: TextView
 
@@ -98,6 +108,11 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
 
             astraMotion =
                 AstraMotionEngine(this)
+
+            astraSphm =
+                AstraSphmEngine(this)
+
+
 
             tvSystemStatus.text =
                 "● MODELS LOADED"
@@ -193,6 +208,18 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
 
         tvMotionLatency =
             findViewById(R.id.tvMotionLatency)
+
+        tvSphmWindow =
+            findViewById(R.id.tvSphmWindow)
+
+        tvSphmRaw =
+            findViewById(R.id.tvSphmRaw)
+
+        tvSphmProcessed =
+            findViewById(R.id.tvSphmProcessed)
+
+        tvSphmLatency =
+            findViewById(R.id.tvSphmLatency)
 
         tvPriorSpeed =
             findViewById(R.id.tvPriorSpeed)
@@ -479,6 +506,44 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
                 "INFERENCE ERROR\n${e.message}"
         }
 
+        /*
+ * -------------------------------
+ * ASTRA-SPHM
+ * -------------------------------
+ *
+ * State-conditioned heading-delta model.
+ *
+ * Input:
+ *      20 × 6 IMU
+ *      + initial normalized speed
+ *
+ * Runs on the same ~10 Hz test timeline.
+ */
+        try {
+
+            val sphmOutput =
+                astraSphm.addSample(
+                    sample = sample,
+                    initialSpeedMps =
+                        previousTrustedSpeedKmh / 3.6
+                )
+
+            latestSphmOutput =
+                sphmOutput
+
+            renderSphm(
+                sphmOutput
+            )
+
+        } catch (e: Exception) {
+
+            tvSphmRaw.text =
+                "INFERENCE ERROR\n${e.message}"
+
+            tvSphmProcessed.text =
+                "ERROR"
+        }
+
         tvPriorSpeed.text =
             String.format(
                 Locale.US,
@@ -659,11 +724,199 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
             "${output.inferenceMs} ms"
     }
 
+    private fun renderSphm(
+        output: AstraSphmOutput
+    ) {
+
+        /*
+         * WINDOW
+         */
+        tvSphmWindow.text =
+            "${astraSphm.windowSize()} / 20"
+
+        /*
+         * RAW / STATUS
+         */
+        if (!output.valid) {
+
+            tvSphmRaw.text =
+                output.errorMessage
+                    ?: "Waiting for 20 samples..."
+
+        } else {
+
+            tvSphmRaw.text =
+                buildString {
+
+                    append(
+                        "speed = "
+                    )
+
+                    append(
+                        output.speedMps?.let {
+                            String.format(
+                                Locale.US,
+                                "%.6f m/s",
+                                it
+                            )
+                        } ?: "--"
+                    )
+
+                    append("\n")
+
+                    append(
+                        "position = "
+                    )
+
+                    if (
+                        output.positionX != null &&
+                        output.positionY != null
+                    ) {
+
+                        append(
+                            String.format(
+                                Locale.US,
+                                "[%.6f, %.6f]",
+                                output.positionX,
+                                output.positionY
+                            )
+                        )
+
+                    } else {
+
+                        append("--")
+                    }
+
+                    append("\n")
+
+                    append(
+                        "heading_delta = "
+                    )
+
+                    append(
+                        output.headingDeltaRad?.let {
+                            String.format(
+                                Locale.US,
+                                "%.6f rad",
+                                it
+                            )
+                        } ?: "--"
+                    )
+                }
+        }
+
+        /*
+         * PROCESSED VALUES
+         */
+        tvSphmProcessed.text =
+            buildString {
+
+                append("STATUS = ")
+
+                append(
+                    if (output.valid) {
+                        "VALID"
+                    } else {
+                        "WAITING"
+                    }
+                )
+
+                append("\n")
+
+                append("SPEED = ")
+
+                append(
+                    output.speedKmh?.let {
+                        String.format(
+                            Locale.US,
+                            "%.3f km/h",
+                            it
+                        )
+                    } ?: "--"
+                )
+
+                append("\n")
+
+                append("POSITION = ")
+
+                if (
+                    output.positionX != null &&
+                    output.positionY != null
+                ) {
+
+                    append(
+                        String.format(
+                            Locale.US,
+                            "X %.3f m  Y %.3f m",
+                            output.positionX,
+                            output.positionY
+                        )
+                    )
+
+                } else {
+
+                    append("--")
+                }
+
+                append("\n")
+
+                append("HEADING Δ = ")
+
+                append(
+                    output.headingDeltaDeg?.let {
+                        String.format(
+                            Locale.US,
+                            "%+.4f°",
+                            it
+                        )
+                    } ?: "--"
+                )
+
+                append("\n")
+
+                append("MOTION LOGITS = ")
+
+                if (
+                    output.motionLogits.isNotEmpty()
+                ) {
+
+                    append(
+                        output.motionLogits
+                            .joinToString(
+                                prefix = "[",
+                                postfix = "]"
+                            ) {
+                                String.format(
+                                    Locale.US,
+                                    "%.4f",
+                                    it
+                                )
+                            }
+                    )
+
+                } else {
+
+                    append("--")
+                }
+            }
+
+        /*
+         * LATENCY
+         */
+        tvSphmLatency.text =
+            "${output.latencyMs} ms"
+    }
+
     private fun resetModels() {
 
         try {
+
             astraSpeed.reset()
+
             astraMotion.reset()
+
+            astraSphm.clearWindow()
+
         } catch (_: Exception) {
         }
 
@@ -676,6 +929,19 @@ class MLTestActivity : AppCompatActivity(), SensorEventListener {
 
         latestSpeedOutput = null
         latestMotionOutput = null
+        latestSphmOutput = null
+
+        tvSphmWindow.text =
+            "0 / 20"
+
+        tvSphmRaw.text =
+            "Waiting for 20 samples..."
+
+        tvSphmProcessed.text =
+            "--"
+
+        tvSphmLatency.text =
+            "-- ms"
 
         tvSpeedWindow.text = "0 / 20"
         tvMotionWindow.text = "0 / 10"
