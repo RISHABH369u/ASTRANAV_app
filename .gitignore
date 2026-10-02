@@ -13,4 +13,6 @@
 .externalNativeBuild
 .cxx
 local.properties
-/mapbox_access_token.xml
+
+# Mapbox secret
+app/src/main/res/values/mapbox_access_token.xml
