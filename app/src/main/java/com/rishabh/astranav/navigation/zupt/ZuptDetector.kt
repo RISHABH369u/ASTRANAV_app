@@ -465,7 +465,7 @@ class ZuptDetector {
     }
 
     /**
-     * Convert logit -> probability.
+     * Convert logit -> probability. dfsdf
      *
      * sigmoid(x) = 1 / (1 + exp(-x))
      *
