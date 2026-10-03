@@ -539,11 +539,27 @@ class IoVnbdReplaySession(
         )
 
         /*
-         * Specific force / linear acceleration:
+         * Android-style linear acceleration is retained as a
+         * diagnostic / ZUPT signal:
          *
-         *     f = a - g
+         *     linearAcceleration = acceleration - gravity
          *
-         * ESKF expects this quantity.
+         * IMPORTANT:
+         *
+         * This is NOT the value that the replay ESKF receives.
+         *
+         * The replay ESKF receives `acceleration` directly because
+         * the IO-VNBD recorded accelerometer channel is treated as
+         * accelerometer specific force by AstraNavigationEngine in
+         * DATASET_FRAME mode.
+         *
+         * Therefore:
+         *
+         *     ESKF input      = acceleration
+         *     diagnostic LA   = acceleration - gravity
+         *
+         * Keeping these two quantities separate prevents accidental
+         * double gravity subtraction.
          */
         val linearAcceleration = floatArrayOf(
             (sample.accelX - sample.gravityX).toFloat(),
@@ -557,6 +573,13 @@ class IoVnbdReplaySession(
                     sample.gravityZ * sample.gravityZ
         ).toFloat()
 
+        /*
+         * Rebased monotonic replay clock.
+         *
+         * The first sample becomes timestamp 0 ns. The ESKF
+         * prediction layer accepts the first sample as its clock
+         * initialization and integrates subsequent positive dt.
+         */
         val replayTimestampNs =
             (
                     sample.timeMs.toLong() -
@@ -595,6 +618,12 @@ class IoVnbdReplaySession(
             timestampNs =
                 replayTimestampNs,
 
+            /*
+             * `acceleration` is the raw recorded IO-VNBD
+             * accelerometer channel. In DATASET_FRAME replay,
+             * AstraNavigationEngine treats this channel as ESKF
+             * specific force.
+             */
             acceleration =
                 acceleration,
 
@@ -604,6 +633,10 @@ class IoVnbdReplaySession(
             gravity =
                 gravity,
 
+            /*
+             * Kept separately for diagnostics / ZUPT detection.
+             * It is NOT fed to the ESKF as specific force.
+             */
             linearAcceleration =
                 linearAcceleration,
 

@@ -767,12 +767,29 @@ class AstraNavigationEngine(
             gravityBody /
                     gravityMagnitude
 
-        // ASTRA-Core NED gravity direction: +Z = Down.
+        /*
+         * IO-VNBD replay uses the recorded accelerometer vector as
+         * accelerometer specific force.
+         *
+         * At rest the accelerometer is approximately +g in the
+         * recorded device frame, while ASTRA-Core NED gravity is +Z.
+         *
+         * For the ESKF equation:
+         *
+         *     a_n = R_nb * f_b + g_n
+         *
+         * stationary motion requires:
+         *
+         *     R_nb * f_b ~= -g_n
+         *
+         * Therefore the recorded +g specific-force direction must
+         * be mapped to NED -Z, NOT +Z.
+         */
         val target =
             Vec3(
                 x = 0.0,
                 y = 0.0,
-                z = 1.0
+                z = -1.0
             )
 
         val dot =
@@ -783,7 +800,8 @@ class AstraNavigationEngine(
         val attitude =
             when {
 
-                // Already aligned with NED Down.
+                // Recorded +g specific-force direction is already
+                // opposite NED gravity, so it needs no tilt rotation.
                 dot > 0.999999 -> {
                     Quaternion.IDENTITY
                 }
@@ -1015,49 +1033,63 @@ class AstraNavigationEngine(
 
 
         /*
-         * IO-VNBD / Android-style accelerometer semantics:
+         * -------------------------------------------------------------
+         * ACCELEROMETER SEMANTICS
+         * -------------------------------------------------------------
          *
-         *     linearAcceleration = acceleration - gravity
-         *
-         * ASTRA-Core ESKF uses NED gravity:
-         *
-         *     g_n = [0, 0, +9.80665]
-         *
-         * and its mechanization expects TRUE inertial specific
-         * force f_b, where:
+         * ASTRA-Core ESKF expects TRUE SPECIFIC FORCE:
          *
          *     a_n = R_nb * f_b + g_n
          *
-         * Therefore, in the recorded device frame:
+         * where:
          *
-         *     f_b = linearAcceleration - gravity
+         *     f_b = accelerometer specific force
+         *     g_n = [0, 0, +9.80665] in NED
          *
-         * which is:
+         * IMPORTANT:
          *
-         *     f_b = acceleration - 2 * gravity
+         * The IO-VNBD replay accelerometer is already the quantity
+         * that must be supplied to this ESKF path. At rest its
+         * magnitude is approximately +9.8 m/s².
          *
-         * At rest, acceleration ~= gravity, so:
+         * DO NOT do:
          *
-         *     f_b ~= -gravity
+         *     acceleration - gravity
          *
-         * and after rotation into NED:
+         * and especially DO NOT do:
          *
-         *     f_n + g_n ~= 0
+         *     linearAcceleration - gravity
          *
-         * This is the required gravity cancellation.
+         * because that would subtract gravity twice for this replay
+         * representation and destroy the ESKF's own gravity
+         * cancellation.
+         *
+         * LIVE MODE:
+         *     SensorAdapter provides Android-style acceleration and
+         *     gravity separately, so preserve the existing
+         *     acceleration - gravity path there.
+         *
+         * REPLAY DATASET_FRAME:
+         *     use recorded acceleration directly as specific force.
          */
         val deviceSpecificForce =
-            floatArrayOf(
+            if (
+                replayFrameMode ==
+                ReplayFrameMode.DATASET_FRAME
+            ) {
+                deviceAcceleration.copyOf()
+            } else {
+                floatArrayOf(
+                    deviceAcceleration[0] -
+                            sample.gravity[0],
 
-                sample.linearAcceleration[0] -
-                        sample.gravity[0],
+                    deviceAcceleration[1] -
+                            sample.gravity[1],
 
-                sample.linearAcceleration[1] -
-                        sample.gravity[1],
-
-                sample.linearAcceleration[2] -
-                        sample.gravity[2]
-            )
+                    deviceAcceleration[2] -
+                            sample.gravity[2]
+                )
+            }
 
 
         /*
@@ -1517,9 +1549,16 @@ class AstraNavigationEngine(
                         "g=[${"%.3f".format(sample.gravity[0])}," +
                         "${"%.3f".format(sample.gravity[1])}," +
                         "${"%.3f".format(sample.gravity[2])}] " +
-                        "SF=${"%.3f".format(sf.norm())} " +
-                        "NAV_A=${"%.3f".format(navAcc.norm())} " +
-                        "NAV_A_Z=${"%.3f".format(navAcc.z)} " +
+                        "fBody=[${"%.3f".format(sf.x)}," +
+                        "${"%.3f".format(sf.y)}," +
+                        "${"%.3f".format(sf.z)}] " +
+                        "fNav=[${"%.3f".format(prediction.specificForceNavigation.x)}," +
+                        "${"%.3f".format(prediction.specificForceNavigation.y)}," +
+                        "${"%.3f".format(prediction.specificForceNavigation.z)}] " +
+                        "NAV_A=[${"%.3f".format(navAcc.x)}," +
+                        "${"%.3f".format(navAcc.y)}," +
+                        "${"%.3f".format(navAcc.z)}] " +
+                        "NAV_A_NORM=${"%.3f".format(navAcc.norm())} " +
                         "VEL=${"%.3f".format(state.velocity.norm())}m/s " +
                         "zupt=${zuptResult.active} " +
                         "nhc=$nhcAccepted"
