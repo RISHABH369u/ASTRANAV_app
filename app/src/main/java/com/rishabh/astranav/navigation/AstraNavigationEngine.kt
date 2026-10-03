@@ -451,6 +451,128 @@ class AstraNavigationEngine(
 
 
     /**
+     * Initializes the replay body -> navigation attitude from
+     * the recorded IO-VNBD gravity vector.
+     *
+     * IO-VNBD gravity is expressed in the phone/device frame and
+     * points in the direction of gravity. ASTRA-Core uses NED:
+     *
+     *     navigation +Z = Down
+     *
+     * We therefore construct the shortest rotation that maps
+     * the measured device gravity direction onto NED +Z.
+     *
+     * This determines roll/pitch without inventing a yaw.
+     * Yaw is intentionally left at zero because the recorded
+     * IO-VNBD Euler convention has not been validated as a
+     * body -> NED quaternion convention.
+     */
+    @Synchronized
+    fun initializeReplayAttitudeFromGravity(
+        gravity: FloatArray
+    ) {
+
+        if (replayFrameMode != ReplayFrameMode.DATASET_FRAME) {
+            return
+        }
+
+        if (gravity.size < 3) {
+            return
+        }
+
+        val gravityBody =
+            Vec3(
+                x = gravity[0].toDouble(),
+                y = gravity[1].toDouble(),
+                z = gravity[2].toDouble()
+            )
+
+        val gravityMagnitude =
+            gravityBody.norm()
+
+        if (
+            !gravityMagnitude.isFinite() ||
+            gravityMagnitude < 1e-6
+        ) {
+            Log.w(
+                TAG,
+                "Replay attitude init skipped: invalid gravity " +
+                        "magnitude=$gravityMagnitude"
+            )
+            return
+        }
+
+        val from =
+            gravityBody /
+                    gravityMagnitude
+
+        // ASTRA-Core NED gravity direction: +Z = Down.
+        val target =
+            Vec3(
+                x = 0.0,
+                y = 0.0,
+                z = 1.0
+            )
+
+        val dot =
+            from
+                .dot(target)
+                .coerceIn(-1.0, 1.0)
+
+        val attitude =
+            when {
+
+                // Already aligned with NED Down.
+                dot > 0.999999 -> {
+                    Quaternion.IDENTITY
+                }
+
+                // Exactly opposite: choose a deterministic 180°
+                // rotation around the body X axis.
+                dot < -0.999999 -> {
+                    Quaternion(
+                        w = 0.0,
+                        x = 1.0,
+                        y = 0.0,
+                        z = 0.0
+                    )
+                }
+
+                else -> {
+
+                    val cross =
+                        from.cross(target)
+
+                    Quaternion(
+                        w = 1.0 + dot,
+                        x = cross.x,
+                        y = cross.y,
+                        z = cross.z
+                    ).normalized()
+                }
+            }
+
+        eskf.setInitialState(
+            position = Vec3.ZERO,
+            velocity = Vec3.ZERO,
+            attitude = attitude,
+            gyroBias = Vec3.ZERO,
+            accelBias = Vec3.ZERO,
+            timestampNanos = 0L
+        )
+
+        Log.i(
+            TAG,
+            "Replay attitude initialized from gravity: " +
+                    "g=${"%.4f".format(gravityMagnitude)} " +
+                    "q=[w=${"%.6f".format(attitude.w)}, " +
+                    "x=${"%.6f".format(attitude.x)}, " +
+                    "y=${"%.6f".format(attitude.y)}, " +
+                    "z=${"%.6f".format(attitude.z)}]"
+        )
+    }
+
+    /**
      * Injects one offline replay sample through the same
      * navigation pipeline used by the live runtime.
      */
@@ -462,6 +584,24 @@ class AstraNavigationEngine(
 
             resetForReplay(
                 ReplayFrameMode.DATASET_FRAME
+            )
+        }
+
+        /*
+         * The first replay sample establishes the initial
+         * body -> NED attitude before ESKF prediction.
+         *
+         * processedSampleCount is still zero here, because
+         * onSensorSample() increments it only after entry.
+         */
+        if (
+            replayFrameMode ==
+            ReplayFrameMode.DATASET_FRAME &&
+            processedSampleCount == 0L
+        ) {
+
+            initializeReplayAttitudeFromGravity(
+                sample.gravity
             )
         }
 
@@ -614,26 +754,47 @@ class AstraNavigationEngine(
 
 
         /*
-         * SensorAdapter gives acceleration including gravity.
+         * IO-VNBD / Android-style accelerometer semantics:
          *
-         * ESKF mechanization expects specific force.
+         *     linearAcceleration = acceleration - gravity
          *
-         * Therefore:
+         * ASTRA-Core ESKF uses NED gravity:
          *
-         *     specificForce = acceleration - gravity
+         *     g_n = [0, 0, +9.80665]
          *
-         * before entering ESKF.
+         * and its mechanization expects TRUE inertial specific
+         * force f_b, where:
+         *
+         *     a_n = R_nb * f_b + g_n
+         *
+         * Therefore, in the recorded device frame:
+         *
+         *     f_b = linearAcceleration - gravity
+         *
+         * which is:
+         *
+         *     f_b = acceleration - 2 * gravity
+         *
+         * At rest, acceleration ~= gravity, so:
+         *
+         *     f_b ~= -gravity
+         *
+         * and after rotation into NED:
+         *
+         *     f_n + g_n ~= 0
+         *
+         * This is the required gravity cancellation.
          */
         val deviceSpecificForce =
             floatArrayOf(
 
-                deviceAcceleration[0] -
+                sample.linearAcceleration[0] -
                         sample.gravity[0],
 
-                deviceAcceleration[1] -
+                sample.linearAcceleration[1] -
                         sample.gravity[1],
 
-                deviceAcceleration[2] -
+                sample.linearAcceleration[2] -
                         sample.gravity[2]
             )
 
@@ -971,31 +1132,50 @@ class AstraNavigationEngine(
         // -----------------------------------------------------
 
         /*
-         * Log every 20 processed samples.
+         * Replay physics diagnostic.
          *
-         * At a 10 Hz SensorAdapter rate this is approximately
-         * once every 2 seconds.
+         * Log every 10 samples (~1 second at 10 Hz).
+         * The important values are:
+         *
+         *   SF  = specific force entering ESKF
+         *   NAV = navigation-frame acceleration after
+         *         gravity is added by ESKF
+         *   VEL = resulting speed
+         *
+         * For a healthy replay, NAV should NOT contain a
+         * persistent +9.8 m/s² vertical component.
          */
         if (
-            processedSampleCount % 20L == 0L
+            replayFrameMode ==
+            ReplayFrameMode.DATASET_FRAME &&
+            processedSampleCount % 10L == 0L
         ) {
 
             val state =
                 eskf.getState()
 
+            val sf =
+                prediction.specificForceBody
+
+            val navAcc =
+                prediction.accelerationNavigation
+
             Log.d(
                 TAG,
-                "NAV " +
-                        "speed=${"%.2f".format(
-                            state.velocity.norm()
-                        )}m/s " +
-                        "stationary=${zuptResult.active} " +
-                        "zupt=$zuptAccepted " +
-                        "zaru=$zaruAccepted " +
-                        "nhc=$nhcAccepted " +
-                        "dvfc=${dvfcTransform != null} " +
-                        "frameMode=$replayFrameMode " +
-                        "samples=$processedSampleCount"
+                "REPLAY_PHYSICS " +
+                        "t=${sample.timestampNs / 1_000_000L}ms " +
+                        "rawA=[${"%.3f".format(deviceAcceleration[0])}," +
+                        "${"%.3f".format(deviceAcceleration[1])}," +
+                        "${"%.3f".format(deviceAcceleration[2])}] " +
+                        "g=[${"%.3f".format(sample.gravity[0])}," +
+                        "${"%.3f".format(sample.gravity[1])}," +
+                        "${"%.3f".format(sample.gravity[2])}] " +
+                        "SF=${"%.3f".format(sf.norm())} " +
+                        "NAV_A=${"%.3f".format(navAcc.norm())} " +
+                        "NAV_A_Z=${"%.3f".format(navAcc.z)} " +
+                        "VEL=${"%.3f".format(state.velocity.norm())}m/s " +
+                        "zupt=${zuptResult.active} " +
+                        "nhc=$nhcAccepted"
             )
         }
     }
@@ -1140,29 +1320,6 @@ class AstraNavigationEngine(
             )
     }
 
-
-    // ---------------------------------------------------------
-    // REPLAY / BENCHMARK INPUT
-    // ---------------------------------------------------------
-
-    @Synchronized
-    fun resetForReplay() {
-        sensorAdapter.stop()
-        running = true
-        eskf.reset()
-        lastTimestampNs = 0L
-        processedSampleCount = 0L
-        stationarySampleCount = 0
-        movingSampleCount = 0
-        latestSensorSample = null
-        latestSolution = NavigationSolution()
-        dvfcTransform = DvfcCalibrationStore.load(context.applicationContext)
-    }
-
-    fun processReplaySample(sample: DeviceSensorSample) {
-        if (!running) resetForReplay()
-        onSensorSample(sample)
-    }
 
     // ---------------------------------------------------------
     // PUBLIC STATE

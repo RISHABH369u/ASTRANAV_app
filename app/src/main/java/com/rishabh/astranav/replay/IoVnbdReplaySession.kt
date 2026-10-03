@@ -556,6 +556,26 @@ class IoVnbdReplaySession(
             )
 
 
+        /*
+         * IO-VNBD gravity is the estimated gravity vector in the
+         * same device frame as the accelerometer.
+         *
+         * Therefore:
+         *
+         *     linearAcceleration = accelerometer - gravity
+         *
+         * This value is intentionally kept for ZUPT / motion
+         * detection. The ESKF receives the INS specific-force
+         * quantity in AstraNavigationEngine:
+         *
+         *     specificForce = linearAcceleration - gravity
+         *
+         * which is equivalent to:
+         *
+         *     accelerometer - 2 * gravity
+         *
+         * under the NED convention used by ASTRA-Core.
+         */
         val linearAcceleration =
             floatArrayOf(
 
@@ -640,11 +660,13 @@ class IoVnbdReplaySession(
 
 
             /*
-             * Do not invent a live-phone quaternion.
+             * The navigation ESKF owns the authoritative
+             * body -> navigation attitude.
              *
-             * Dataset orientation is preserved separately
-             * through the available recorded orientation
-             * fields in DeviceSensorSample.
+             * Replay attitude is initialized from the recorded
+             * gravity vector by AstraNavigationEngine before the
+             * first sample is processed. DeviceSensorSample does
+             * not carry a live-phone rotation-vector quaternion.
              */
             quaternion =
                 Quat.IDENTITY,
