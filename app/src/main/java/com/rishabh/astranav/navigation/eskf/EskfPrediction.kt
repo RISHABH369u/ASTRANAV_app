@@ -279,14 +279,17 @@ class EskfPrediction(
             )
         }
 
-        if (!newPosition.isFinite()) {
+        if (!newVelocity.isFinite()) {
+
+            state.timestampNanos =
+                timestampNanos
 
             return rejected(
                 state = state,
                 deltaTimeSeconds =
                     deltaTimeSeconds,
                 reason =
-                    "Predicted position became non-finite"
+                    "Predicted velocity became non-finite"
             )
         }
 
@@ -297,6 +300,19 @@ class EskfPrediction(
             newVelocity.norm() >
             config.maxVelocityMps
         ) {
+
+            /*
+             * Keep the estimator clock synchronized with the
+             * incoming IMU stream.
+             *
+             * The nominal position/velocity/attitude are NOT
+             * committed.
+             *
+             * This prevents one rejected sample from causing
+             * the next prediction to accumulate a huge dt.
+             */
+            state.timestampNanos =
+                timestampNanos
 
             return rejected(
                 state = state,
@@ -311,6 +327,9 @@ class EskfPrediction(
             newPosition.norm() >
             config.maxPositionM
         ) {
+
+            state.timestampNanos =
+                timestampNanos
 
             return rejected(
                 state = state,

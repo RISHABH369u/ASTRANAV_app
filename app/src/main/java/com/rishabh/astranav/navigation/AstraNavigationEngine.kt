@@ -11,11 +11,13 @@ import com.rishabh.astranav.navigation.eskf.Quaternion
 import com.rishabh.astranav.navigation.eskf.Vec3
 import com.rishabh.astranav.navigation.zupt.ZuptDetector
 import com.rishabh.astranav.replay.ReplayFrameMode
+import kotlin.math.asin
 
 
 import kotlin.math.atan2
 import kotlin.math.sqrt
-
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
  * =============================================================
@@ -97,6 +99,15 @@ class AstraNavigationEngine(
          */
         private const val MAX_NHC_SPEED_MPS =
             60.0
+
+        private const val REPLAY_GRAVITY =
+            9.80665
+
+        private const val REPLAY_GRAVITY_MIN =
+            8.5
+
+        private const val REPLAY_GRAVITY_MAX =
+            11.0
     }
 
 
@@ -166,6 +177,256 @@ class AstraNavigationEngine(
             "Replay frame mode = $mode, " +
                     "DVFC=${dvfcTransform != null}"
         )
+    }
+
+
+
+    /**
+     * Builds an initial body -> NED attitude from the
+     * measured gravity vector.
+     *
+     * Gravity gives us roll/pitch.
+     *
+     * Yaw is deliberately initialized to zero because
+     * gravity cannot determine yaw.
+     *
+     * This is much safer than starting from identity when
+     * the phone is mounted at an arbitrary tilt.
+     */
+    private fun replayInitialAttitudeFromGravity(
+        gravity: FloatArray
+    ): Quaternion {
+
+        val gx =
+            gravity[0].toDouble()
+
+        val gy =
+            gravity[1].toDouble()
+
+        val gz =
+            gravity[2].toDouble()
+
+        val magnitude =
+            sqrt(
+                gx * gx +
+                        gy * gy +
+                        gz * gz
+            )
+
+        if (
+            !magnitude.isFinite() ||
+            magnitude < REPLAY_GRAVITY_MIN ||
+            magnitude > REPLAY_GRAVITY_MAX
+        ) {
+            return Quaternion.IDENTITY
+        }
+
+        /*
+         * Normalize gravity.
+         */
+        val nx = gx / magnitude
+        val ny = gy / magnitude
+        val nz = gz / magnitude
+
+        /*
+         * Initial tilt estimate.
+         *
+         * For the NED/FRD convention used by ASTRA:
+         *
+         *     X = forward / north
+         *     Y = right / east
+         *     Z = down
+         *
+         * Yaw remains zero.
+         */
+        val roll =
+            atan2(
+                ny,
+                nz
+            )
+
+        val pitch =
+            atan2(
+                -nx,
+                sqrt(
+                    ny * ny +
+                            nz * nz
+                )
+            )
+
+        /*
+         * Convert small-angle roll/pitch into a quaternion.
+         *
+         * yaw = 0.
+         */
+        val cr =
+            cos(roll * 0.5)
+
+        val sr =
+            sin(roll * 0.5)
+
+        val cp =
+            cos(pitch * 0.5)
+
+        val sp =
+            sin(pitch * 0.5)
+
+        val cy =
+            1.0
+
+        val sy =
+            0.0
+
+        val w =
+            cr * cp * cy +
+                    sr * sp * sy
+
+        val x =
+            sr * cp * cy -
+                    cr * sp * sy
+
+        val y =
+            cr * sp * cy +
+                    sr * cp * sy
+
+        val z =
+            cr * cp * sy -
+                    sr * sp * cy
+
+        return Quaternion(
+            w = w,
+            x = x,
+            y = y,
+            z = z
+        ).normalized()
+    }
+
+    /**
+     * Computes roll/pitch from the measured gravity vector.
+     *
+     * Coordinate convention:
+     *
+     * Navigation:
+     *     X = North
+     *     Y = East
+     *     Z = Down
+     *
+     * Device:
+     *     gravity is measured directly in device coordinates.
+     *
+     * We use gravity ONLY for tilt stabilization.
+     * Yaw is intentionally not inferred from gravity.
+     */
+    private fun gravityTiltQuaternion(
+        gravity: FloatArray
+    ): Quaternion {
+
+        val gx =
+            gravity[0].toDouble()
+
+        val gy =
+            gravity[1].toDouble()
+
+        val gz =
+            gravity[2].toDouble()
+
+        val magnitude =
+            sqrt(
+                gx * gx +
+                        gy * gy +
+                        gz * gz
+            )
+
+        if (
+            !magnitude.isFinite() ||
+            magnitude < 1.0
+        ) {
+            return Quaternion.IDENTITY
+        }
+
+        val nx =
+            gx / magnitude
+
+        val ny =
+            gy / magnitude
+
+        val nz =
+            gz / magnitude
+
+        /*
+         * Gravity in body/device frame:
+         *
+         *     gx = -sin(pitch)
+         *     gy =  cos(pitch) * sin(roll)
+         *     gz =  cos(pitch) * cos(roll)
+         *
+         * Therefore:
+         */
+        val pitch =
+            asin(
+                (-nx)
+                    .coerceIn(
+                        -1.0,
+                        1.0
+                    )
+            )
+
+        val roll =
+            atan2(
+                ny,
+                nz
+            )
+
+        /*
+         * No yaw information exists in gravity.
+         *
+         * Build a tilt-only quaternion.
+         *
+         * This is used only as a diagnostic/reference
+         * orientation during replay.
+         */
+        val halfRoll =
+            roll * 0.5
+
+        val halfPitch =
+            pitch * 0.5
+
+        val cr =
+            kotlin.math.cos(
+                halfRoll
+            )
+
+        val sr =
+            kotlin.math.sin(
+                halfRoll
+            )
+
+        val cp =
+            kotlin.math.cos(
+                halfPitch
+            )
+
+        val sp =
+            kotlin.math.sin(
+                halfPitch
+            )
+
+        /*
+         * ZYX with yaw = 0.
+         */
+        return Quaternion(
+            w =
+                cr * cp,
+
+            x =
+                sr * cp,
+
+            y =
+                cr * sp,
+
+            z =
+                -sr * sp
+        ).normalized()
     }
 
 
@@ -816,6 +1077,30 @@ class AstraNavigationEngine(
                 )
                 ?: deviceSpecificForce
 
+        val specificForceNorm =
+            sqrt(
+                vehicleSpecificForce[0].toDouble() *
+                        vehicleSpecificForce[0].toDouble() +
+
+                        vehicleSpecificForce[1].toDouble() *
+                        vehicleSpecificForce[1].toDouble() +
+
+                        vehicleSpecificForce[2].toDouble() *
+                        vehicleSpecificForce[2].toDouble()
+            )
+
+        val rawAccelerationNorm =
+            sqrt(
+                deviceAcceleration[0].toDouble() *
+                        deviceAcceleration[0].toDouble() +
+
+                        deviceAcceleration[1].toDouble() *
+                        deviceAcceleration[1].toDouble() +
+
+                        deviceAcceleration[2].toDouble() *
+                        deviceAcceleration[2].toDouble()
+            )
+
         val vehicleGyro =
             dvfcTransform
                 ?.rotate(
@@ -888,6 +1173,58 @@ class AstraNavigationEngine(
             )
 
 
+        /*
+ * ---------------------------------------------------------
+ * REPLAY INITIAL ATTITUDE
+ * ---------------------------------------------------------
+ *
+ * The old implementation started the IO-VNBD replay
+ * from Quaternion.IDENTITY.
+ *
+ * That is wrong when the recorded phone is tilted.
+ *
+ * Gravity gives us the initial roll/pitch.
+ */
+        if (
+            replayFrameMode ==
+            ReplayFrameMode.DATASET_FRAME &&
+            processedSampleCount == 1L
+        ) {
+
+            val initialAttitude =
+                replayInitialAttitudeFromGravity(
+                    sample.gravity
+                )
+
+            eskf.initializeReplayAttitude(
+                attitude =
+                    initialAttitude,
+
+                timestampNanos =
+                    sample.timestampNs
+            )
+
+            Log.i(
+                TAG,
+                "REPLAY_ATTITUDE_INIT " +
+                        "gravity=[" +
+                        "%.3f".format(sample.gravity[0]) +
+                        "," +
+                        "%.3f".format(sample.gravity[1]) +
+                        "," +
+                        "%.3f".format(sample.gravity[2]) +
+                        "]"
+            )
+
+            updateSolution(
+                sample = sample,
+                predictionAccepted = true
+            )
+
+            return
+        }
+
+
         if (!prediction.accepted) {
 
             Log.w(
@@ -900,17 +1237,27 @@ class AstraNavigationEngine(
             /*
              * IMPORTANT:
              *
-             * Do NOT advance lastTimestampNs.
+             * The ESKF rejected this sample, so we do not use
+             * the rejected state as a navigation update.
              *
-             * ESKF rejected this prediction, therefore the
-             * authoritative navigation state has not advanced.
+             * However, replay itself must continue on the real
+             * 10 Hz timeline.
+             *
+             * Otherwise one rejected sample causes dt to grow:
+             *
+             * 0.1 -> 0.2 -> 0.3 -> 1.0 -> 10 seconds
+             *
+             * which makes every following prediction invalid.
              */
-            updateSolution(
-                sample =
-                    sample,
+            lastTimestampNs =
+                sample.timestampNs
 
-                predictionAccepted =
-                    false
+            hasLastTimestamp =
+                true
+
+            updateSolution(
+                sample = sample,
+                predictionAccepted = false
             )
 
             return
@@ -1178,6 +1525,8 @@ class AstraNavigationEngine(
                         "nhc=$nhcAccepted"
             )
         }
+
+
     }
 
 

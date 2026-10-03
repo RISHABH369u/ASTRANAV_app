@@ -859,6 +859,26 @@ class Eskf(
         lastGnssVelocityResult = null
     }
 
+
+    fun initializeReplayAttitude(
+        attitude: Quaternion,
+        timestampNanos: Long
+    ) {
+        val state = getState()
+
+        state.attitude =
+            attitude.normalized()
+
+        state.velocity =
+            Vec3.ZERO
+
+        state.position =
+            Vec3.ZERO
+
+        state.timestampNanos =
+            timestampNanos
+    }
+
     /*
      * ------------------------------------------------------------------
      * Sensor timeline reset

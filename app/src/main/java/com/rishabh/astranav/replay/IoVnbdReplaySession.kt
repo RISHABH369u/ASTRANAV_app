@@ -523,218 +523,149 @@ class IoVnbdReplaySession(
     // =========================================================
 
     private fun toDeviceSample(
-        sample:
-        IovnbdPhoneSample
-    ):
-            DeviceSensorSample {
+        sample: IovnbdPhoneSample
+    ): DeviceSensorSample {
 
-        val gravity =
-            floatArrayOf(
+        val gravity = floatArrayOf(
+            sample.gravityX.toFloat(),
+            sample.gravityY.toFloat(),
+            sample.gravityZ.toFloat()
+        )
 
-                sample.gravityX
-                    .toFloat(),
-
-                sample.gravityY
-                    .toFloat(),
-
-                sample.gravityZ
-                    .toFloat()
-            )
-
-
-        val acceleration =
-            floatArrayOf(
-
-                sample.accelX
-                    .toFloat(),
-
-                sample.accelY
-                    .toFloat(),
-
-                sample.accelZ
-                    .toFloat()
-            )
-
+        val acceleration = floatArrayOf(
+            sample.accelX.toFloat(),
+            sample.accelY.toFloat(),
+            sample.accelZ.toFloat()
+        )
 
         /*
-         * IO-VNBD gravity is the estimated gravity vector in the
-         * same device frame as the accelerometer.
+         * Specific force / linear acceleration:
          *
-         * Therefore:
+         *     f = a - g
          *
-         *     linearAcceleration = accelerometer - gravity
-         *
-         * This value is intentionally kept for ZUPT / motion
-         * detection. The ESKF receives the INS specific-force
-         * quantity in AstraNavigationEngine:
-         *
-         *     specificForce = linearAcceleration - gravity
-         *
-         * which is equivalent to:
-         *
-         *     accelerometer - 2 * gravity
-         *
-         * under the NED convention used by ASTRA-Core.
+         * ESKF expects this quantity.
          */
-        val linearAcceleration =
-            floatArrayOf(
+        val linearAcceleration = floatArrayOf(
+            (sample.accelX - sample.gravityX).toFloat(),
+            (sample.accelY - sample.gravityY).toFloat(),
+            (sample.accelZ - sample.gravityZ).toFloat()
+        )
 
-                (
-                        sample.accelX -
-                                sample.gravityX
-                        ).toFloat(),
+        val gravityMagnitude = sqrt(
+            sample.gravityX * sample.gravityX +
+                    sample.gravityY * sample.gravityY +
+                    sample.gravityZ * sample.gravityZ
+        ).toFloat()
 
-                (
-                        sample.accelY -
-                                sample.gravityY
-                        ).toFloat(),
-
-                (
-                        sample.accelZ -
-                                sample.gravityZ
-                        ).toFloat()
-            )
-
-
-        val gravityMagnitude =
-            sqrt(
-
-                sample.gravityX *
-                        sample.gravityX +
-
-                        sample.gravityY *
-                        sample.gravityY +
-
-                        sample.gravityZ *
-                        sample.gravityZ
-
-            ).toFloat()
-
-
-        /*
-         * IMPORTANT:
-         *
-         * Timestamp is rebased to the beginning of
-         * the recorded IO-VNBD session.
-         *
-         * We are NOT using the current phone clock.
-         */
         val replayTimestampNs =
             (
                     sample.timeMs.toLong() -
                             replayStartTimeMs
-                    ) *
-                    1_000_000L
+                    ) * 1_000_000L
 
+        /*
+         * IMPORTANT:
+         *
+         * IO-VNBD's gyro columns are NOT assumed to be
+         * conventional body X/Y/Z.
+         *
+         * The dataset evidence indicates that the column
+         * labelled "Pitch" behaves much more like the
+         * vehicle yaw-rate channel.
+         *
+         * Therefore we do NOT blindly feed:
+         *
+         *     Yaw   -> X
+         *     Pitch -> Y
+         *     Roll  -> Z
+         *
+         * For the replay diagnostic, preserve the dataset
+         * channels explicitly.
+         *
+         * AstraNavigationEngine will interpret them.
+         */
+        val datasetGyro = floatArrayOf(
+            sample.gyroYaw.toFloat(),
+            sample.gyroPitch.toFloat(),
+            sample.gyroRoll.toFloat()
+        )
 
         return DeviceSensorSample(
 
             timestampNs =
                 replayTimestampNs,
 
-
             acceleration =
                 acceleration,
 
-
             angularVelocity =
-                floatArrayOf(
-
-                    sample.gyroYaw
-                        .toFloat(),
-
-                    sample.gyroPitch
-                        .toFloat(),
-
-                    sample.gyroRoll
-                        .toFloat()
-                ),
-
+                datasetGyro,
 
             gravity =
                 gravity,
 
-
             linearAcceleration =
                 linearAcceleration,
 
-
             /*
-             * The navigation ESKF owns the authoritative
-             * body -> navigation attitude.
+             * We intentionally do NOT manufacture a
+             * quaternion from the recorded orientation
+             * angles here.
              *
-             * Replay attitude is initialized from the recorded
-             * gravity vector by AstraNavigationEngine before the
-             * first sample is processed. DeviceSensorSample does
-             * not carry a live-phone rotation-vector quaternion.
+             * Those IO-VNBD orientation fields are not safe
+             * to interpret as a standard Android/ZYX quaternion.
              */
             quaternion =
                 Quat.IDENTITY,
 
-
             gravityMagnitude =
                 gravityMagnitude,
 
-
             gravityStable =
-                true,
-
+                gravityMagnitude in 9.3f..10.3f,
 
             gravityLevelRollDeg =
                 sample.orientationRollDeg
                     ?.toFloat()
                     ?: 0f,
 
-
             gravityLevelPitchDeg =
                 sample.orientationPitchDeg
                     ?.toFloat()
                     ?: 0f,
 
-
             estimatedSampleHz =
                 10f,
-
 
             timestampJitterMs =
                 0f,
 
-
             dataGapCount =
                 0,
-
 
             maxGapMs =
                 0f,
 
-
             duplicateTimestampCount =
                 0,
-
 
             resamplingActive =
                 false,
 
-
             resamplingRateHz =
                 10f,
-
 
             accelerationAvailable =
                 true,
 
-
             gyroscopeAvailable =
                 true,
-
 
             gravityAvailable =
                 true,
 
-
             rotationVectorAvailable =
                 false,
-
 
             rotationAccuracy =
                 0
