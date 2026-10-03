@@ -1,0 +1,276 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!-- Settings — grouped into the same sections as the design reference
+     (Navigation / Sensors / AI / Offline / About), but every info row here
+     reflects something real in this codebase rather than mock numbers, and
+     every switch is a persisted user preference (SharedPreferences), even
+     where the subsystem it will eventually gate isn't fully wired up yet —
+     those rows say so plainly instead of pretending. -->
+<androidx.core.widget.NestedScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+
+    android:background="@color/ink_900"
+
+    android:fillViewport="true">
+
+    <LinearLayout
+
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+
+        android:orientation="vertical"
+
+        android:paddingHorizontal="18dp"
+        android:paddingTop="18dp"
+        android:paddingBottom="32dp">
+
+
+        <!-- HEADER -->
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    style="@style/SettingsKicker"
+                    android:text="ASTRA NAV · CONFIG" />
+
+                <TextView
+                    style="@style/SettingsTitle"
+                    android:text="Settings" />
+
+            </LinearLayout>
+
+            <FrameLayout
+                android:id="@+id/btnBack"
+                android:layout_width="42dp"
+                android:layout_height="42dp"
+                android:background="@drawable/bg_icon_square"
+                android:clickable="true"
+                android:focusable="true">
+
+                <ImageView
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:layout_gravity="center"
+                    android:rotation="180"
+                    android:src="@drawable/ic_chevron_right"
+                    app:tint="@color/fg_dim" />
+
+            </FrameLayout>
+
+        </LinearLayout>
+
+        <TextView
+            style="@style/SettingsSubtitle"
+            android:text="Navigation, sensor and inference configuration." />
+
+
+        <!-- ================================================= -->
+        <!-- NAVIGATION -->
+        <!-- ================================================= -->
+
+        <TextView style="@style/SettingsSectionLabel" android:text="NAVIGATION" />
+
+        <LinearLayout style="@style/SettingsCard">
+
+            <LinearLayout style="@style/SettingsRow">
+                <LinearLayout style="@style/SettingsRowLabelGroup">
+                    <TextView style="@style/SettingsRowLabel" android:text="Fusion mode" />
+                    <TextView style="@style/SettingsRowCaption" android:text="How GNSS and inertial data are combined" />
+                </LinearLayout>
+                <TextView style="@style/SettingsRowValue" android:text="Automatic (ESKF)" />
+            </LinearLayout>
+
+            <View style="@style/SettingsDivider" />
+
+            <LinearLayout style="@style/SettingsRow">
+                <LinearLayout style="@style/SettingsRowLabelGroup">
+                    <TextView style="@style/SettingsRowLabel" android:text="Vehicle constraints (NHC)" />
+                    <TextView style="@style/SettingsRowCaption" android:text="Suppresses lateral/vertical drift while driving" />
+                </LinearLayout>
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/switchNhc"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    app:thumbTint="@color/switch_thumb_tint"
+                    app:trackTint="@color/switch_track_tint" />
+            </LinearLayout>
+
+            <View style="@style/SettingsDivider" />
+
+            <LinearLayout style="@style/SettingsRow">
+                <LinearLayout style="@style/SettingsRowLabelGroup">
+                    <TextView style="@style/SettingsRowLabel" android:text="Map matching" />
+                    <TextView style="@style/SettingsRowCaption" android:text="Not yet used by the live engine — preference only" />
+                </LinearLayout>
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/switchMapMatching"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    app:thumbTint="@color/switch_thumb_tint"
+                    app:trackTint="@color/switch_track_tint" />
+            </LinearLayout>
+
+        </LinearLayout>
+
+
+        <!-- ================================================= -->
+        <!-- SENSORS -->
+        <!-- ================================================= -->
+
+        <TextView style="@style/SettingsSectionLabel" android:text="SENSORS" />
+
+        <LinearLayout style="@style/SettingsCard">
+
+            <LinearLayout style="@style/SettingsRow">
+                <LinearLayout style="@style/SettingsRowLabelGroup">
+                    <TextView style="@style/SettingsRowLabel" android:text="IMU source" />
+                </LinearLayout>
+                <TextView style="@style/SettingsRowValue" android:text="Device (internal)" />
+            </LinearLayout>
+
+            <View style="@style/SettingsDivider" />
+
+            <LinearLayout style="@style/SettingsRow">
+                <LinearLayout style="@style/SettingsRowLabelGroup">
+                    <TextView style="@style/SettingsRowLabel" android:text="Sampling mode" />
+                    <TextView style="@style/SettingsRowCaption" android:text="Android SENSOR_DELAY_GAME" />
+                </LinearLayout>
+                <TextView style="@style/SettingsRowValue" android:text="~50 Hz target" />
+            </LinearLayout>
+
+            <View style="@style/SettingsDivider" />
+
+            <LinearLayout style="@style/SettingsRow">
+                <LinearLayout style="@style/SettingsRowLabelGroup">
+                    <TextView style="@style/SettingsRowLabel" android:text="External IMU" />
+                    <TextView style="@style/SettingsRowCaption" android:text="Not supported on this build" />
+                </LinearLayout>
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/switchExternalImu"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:enabled="false"
+                    app:thumbTint="@color/switch_thumb_tint"
+                    app:trackTint="@color/switch_track_tint" />
+            </LinearLayout>
+
+            <View style="@style/SettingsDivider" />
+
+            <LinearLayout
+                android:id="@+id/rowCalibration"
+                style="@style/SettingsRow"
+                android:clickable="true"
+                android:focusable="true"
+                android:background="?attr/selectableItemBackground">
+                <LinearLayout style="@style/SettingsRowLabelGroup">
+                    <TextView style="@style/SettingsRowLabel" android:text="Device → Vehicle calibration" />
+                    <TextView android:id="@+id/rowCalibrationCaption" style="@style/SettingsRowCaption" android:text="—" />
+                </LinearLayout>
+                <ImageView
+                    android:layout_width="14dp"
+                    android:layout_height="14dp"
+                    android:src="@drawable/ic_chevron_right"
+                    app:tint="@color/fg_faint" />
+            </LinearLayout>
+
+        </LinearLayout>
+
+
+        <!-- ================================================= -->
+        <!-- AI -->
+        <!-- ================================================= -->
+
+        <TextView style="@style/SettingsSectionLabel" android:text="AI" />
+
+        <LinearLayout style="@style/SettingsCard">
+
+            <LinearLayout style="@style/SettingsRow">
+                <LinearLayout style="@style/SettingsRowLabelGroup">
+                    <TextView style="@style/SettingsRowLabel" android:text="Speed model" />
+                </LinearLayout>
+                <TextView style="@style/SettingsRowValue" android:text="ASTRA-Speed (GRU)" />
+            </LinearLayout>
+
+            <View style="@style/SettingsDivider" />
+
+            <LinearLayout style="@style/SettingsRow">
+                <LinearLayout style="@style/SettingsRowLabelGroup">
+                    <TextView style="@style/SettingsRowLabel" android:text="Motion model" />
+                </LinearLayout>
+                <TextView style="@style/SettingsRowValue" android:text="ASTRA-Motion" />
+            </LinearLayout>
+
+            <View style="@style/SettingsDivider" />
+
+            <LinearLayout style="@style/SettingsRow">
+                <LinearLayout style="@style/SettingsRowLabelGroup">
+                    <TextView style="@style/SettingsRowLabel" android:text="Inference mode" />
+                </LinearLayout>
+                <TextView style="@style/SettingsRowValue" android:text="On-device (ONNX Runtime)" />
+            </LinearLayout>
+
+        </LinearLayout>
+
+
+        <!-- ================================================= -->
+        <!-- OFFLINE -->
+        <!-- ================================================= -->
+
+        <TextView style="@style/SettingsSectionLabel" android:text="OFFLINE" />
+
+        <LinearLayout style="@style/SettingsCard">
+
+            <LinearLayout style="@style/SettingsRow">
+                <LinearLayout style="@style/SettingsRowLabelGroup">
+                    <TextView style="@style/SettingsRowLabel" android:text="Offline maps" />
+                    <TextView style="@style/SettingsRowCaption" android:text="Not implemented in this build" />
+                </LinearLayout>
+                <TextView style="@style/SettingsRowValue" android:text="—" />
+            </LinearLayout>
+
+        </LinearLayout>
+
+
+        <!-- ================================================= -->
+        <!-- ABOUT -->
+        <!-- ================================================= -->
+
+        <TextView style="@style/SettingsSectionLabel" android:text="ABOUT" />
+
+        <LinearLayout style="@style/SettingsCard">
+
+            <LinearLayout style="@style/SettingsRow">
+                <LinearLayout style="@style/SettingsRowLabelGroup">
+                    <TextView style="@style/SettingsRowLabel" android:text="App version" />
+                </LinearLayout>
+                <TextView android:id="@+id/rowVersion" style="@style/SettingsRowValue" android:text="—" />
+            </LinearLayout>
+
+            <View style="@style/SettingsDivider" />
+
+            <LinearLayout style="@style/SettingsRow">
+                <LinearLayout style="@style/SettingsRowLabelGroup">
+                    <TextView style="@style/SettingsRowLabel" android:text="Models" />
+                </LinearLayout>
+                <TextView style="@style/SettingsRowValue" android:text="ASTRA-Speed · ASTRA-Motion · ESKF" />
+            </LinearLayout>
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+</androidx.core.widget.NestedScrollView>

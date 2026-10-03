@@ -32,7 +32,7 @@ import kotlinx.coroutines.flow.StateFlow
 /** What the vehicle is doing right now — derived from NavigationState.stationary + live yaw rate. */
 enum class MotionActivity { STATIONARY, DRIVING, TURNING }
 
-/** Everything HomeActivity / MapActivity need to render, in one live snapshot. */
+/** Everything HomeActivity / MapActivity / SensorDiagnosticsActivity need to render, in one live snapshot. */
 data class HomeDashboardState(
     val nav: NavigationState = NavigationState(),
     val motion: MotionActivity = MotionActivity.STATIONARY,
@@ -57,6 +57,14 @@ data class HomeDashboardState(
     /** The last lat/lon we had a real GNSS fix at — the "last reliable GNSS point" marker while in dead reckoning. */
     val lastGnssFixLatitude: Double? = null,
     val lastGnssFixLongitude: Double? = null,
+    // Sensor Diagnostics screen additions — live |accel| (m/s²) and |gyro| (rad/s)
+    // magnitude, same values already computed per-sample below for ZUPT/ZARU and
+    // the integrity "physics" input, just surfaced here instead of staying private.
+    val accelMagnitude: Double? = null,
+    val gyroMagnitude: Double? = null,
+    val accelHistory: List<Float> = emptyList(),
+    val gyroHistory: List<Float> = emptyList(),
+    val speedHistory: List<Float> = emptyList(),
 )
 
 /**
@@ -67,10 +75,11 @@ data class HomeDashboardState(
  * permission APIs are used"). This is that wiring.
  *
  * A process-wide singleton, started/stopped from each consuming Activity's
- * onResume/onPause (Home, Map) — not a foreground Service. The manifest
- * already requests FOREGROUND_SERVICE / FOREGROUND_SERVICE_LOCATION, which
- * is the natural next step once navigation needs to keep running with the
- * screen off or the app backgrounded; out of scope for now.
+ * onResume/onPause (Home, Map, Sensor Diagnostics) — not a foreground
+ * Service. The manifest already requests FOREGROUND_SERVICE /
+ * FOREGROUND_SERVICE_LOCATION, which is the natural next step once
+ * navigation needs to keep running with the screen off or the app
+ * backgrounded; out of scope for now.
  */
 object NavigationSessionController : SensorEventListener {
 
@@ -116,6 +125,11 @@ object NavigationSessionController : SensorEventListener {
     private var sparklineTick = 0
     private val aiSpeedHistory = ArrayDeque<Float>()
     private val motionEnergyHistory = ArrayDeque<Float>()
+
+    // Sensor Diagnostics screen's Live Signals traces — same stride as the above.
+    private val accelMagHistory = ArrayDeque<Float>()
+    private val gyroMagHistory = ArrayDeque<Float>()
+    private val speedHistory = ArrayDeque<Float>()
 
     // Cumulative trip distance — trapezoidal integration of fused speed. Resettable.
     private var tripDistanceMeters = 0.0
@@ -244,6 +258,9 @@ object NavigationSessionController : SensorEventListener {
             pushSparkline(aiSpeedHistory, aiKmh)
             val energy = (gyroMag / 2.0).coerceIn(0.0, 1.0).toFloat()
             pushSparkline(motionEnergyHistory, energy)
+            pushSparkline(accelMagHistory, accelMag.toFloat())
+            pushSparkline(gyroMagHistory, gyroMag.toFloat())
+            pushSparkline(speedHistory, (nav.speedMps * 3.6).toFloat())
         }
 
         val gnssAvailableNow = latestGnss != null
@@ -278,6 +295,11 @@ object NavigationSessionController : SensorEventListener {
             integrity = integrity,
             lastGnssFixLatitude = if (gnssAvailableNow) lastKnownLat else _state.value.lastGnssFixLatitude,
             lastGnssFixLongitude = if (gnssAvailableNow) lastKnownLon else _state.value.lastGnssFixLongitude,
+            accelMagnitude = accelMag,
+            gyroMagnitude = gyroMag,
+            accelHistory = accelMagHistory.toList(),
+            gyroHistory = gyroMagHistory.toList(),
+            speedHistory = speedHistory.toList(),
         )
     }
 

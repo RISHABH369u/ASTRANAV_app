@@ -112,7 +112,7 @@ class HomeActivity : AppCompatActivity() {
         motionSparkline.setColorRes(R.color.good)
 
         findViewById<View>(R.id.navHome).setOnClickListener { /* already here */ }
-        findViewById<View>(R.id.navSensors).setOnClickListener { openSensorCheck() }
+        findViewById<View>(R.id.navSensors).setOnClickListener { openSensorDiagnostics() }
         findViewById<View>(R.id.navDvfc).setOnClickListener {
             startActivity(Intent(this, DVFCActivity::class.java))
         }
@@ -120,7 +120,7 @@ class HomeActivity : AppCompatActivity() {
             Toast.makeText(this, "Trips screen isn't built yet", Toast.LENGTH_SHORT).show()
         }
         findViewById<View>(R.id.navSettings).setOnClickListener {
-            Toast.makeText(this, "Settings screen isn't built yet", Toast.LENGTH_SHORT).show()
+            startActivity(Intent(this, SettingsActivity::class.java))
         }
 
         findViewById<View>(R.id.positionCard).setOnClickListener {
@@ -138,10 +138,11 @@ class HomeActivity : AppCompatActivity() {
             )
         }
 
-        findViewById<View>(R.id.systemStatusCard).setOnClickListener { openSensorCheck() }
-        findViewById<View>(R.id.btnViewSystem).setOnClickListener { openSensorCheck() }
+        findViewById<View>(R.id.systemStatusCard).setOnClickListener { openSensorDiagnostics() }
+        findViewById<View>(R.id.btnViewSystem).setOnClickListener { openSensorDiagnostics() }
         findViewById<View>(R.id.btnStartNav).setOnClickListener {
-            startActivity(Intent(this, MapActivity::class.java))
+            // TODO: no Active Navigation screen exists yet in this repo — wire it here once built.
+            Toast.makeText(this, "Active navigation screen isn't built yet", Toast.LENGTH_SHORT).show()
         }
         findViewById<View>(R.id.lastTripCard).setOnClickListener {
             // TODO: no Trip Analytics screen/storage exists yet — this card is still mock data, honestly.
@@ -168,8 +169,11 @@ class HomeActivity : AppCompatActivity() {
         NavigationSessionController.stop()
     }
 
-    private fun openSensorCheck() {
-        startActivity(Intent(this, SensorCheckActivity::class.java))
+    /** Live telemetry screen — distinct from the boot-time SensorCheckActivity
+     * capability scan. Diagnostics itself offers a way into that scan
+     * ("Run full sensor capability scan") for anyone who wants it. */
+    private fun openSensorDiagnostics() {
+        startActivity(Intent(this, SensorDiagnosticsActivity::class.java))
     }
 
     private fun render(s: com.rishabh.astranav.navigation.HomeDashboardState) {

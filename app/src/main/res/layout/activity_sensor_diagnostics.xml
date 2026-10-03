@@ -1,0 +1,587 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!-- Live "System Diagnostics" screen: real telemetry from
+     NavigationSessionController, laid out as a 2x2 sensor grid + a
+     calibration summary + rolling live-signal traces. Anything the app
+     hasn't actually wired up yet (map matching) is labeled as such rather
+     than shown with invented numbers — same rule the DVFC Quality screen
+     follows. -->
+<androidx.core.widget.NestedScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+
+    android:background="@color/ink_900"
+
+    android:fillViewport="true">
+
+    <LinearLayout
+
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+
+        android:orientation="vertical"
+
+        android:paddingHorizontal="18dp"
+        android:paddingTop="18dp"
+        android:paddingBottom="32dp">
+
+
+        <!-- HEADER -->
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    style="@style/DiagKicker"
+                    android:text="ASTRA NAV · LIVE" />
+
+                <TextView
+                    style="@style/DiagTitle"
+                    android:text="System Diagnostics" />
+
+            </LinearLayout>
+
+            <FrameLayout
+                android:id="@+id/btnBack"
+                android:layout_width="42dp"
+                android:layout_height="42dp"
+                android:background="@drawable/bg_icon_square"
+                android:clickable="true"
+                android:focusable="true">
+
+                <ImageView
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:layout_gravity="center"
+                    android:rotation="180"
+                    android:src="@drawable/ic_chevron_right"
+                    app:tint="@color/fg_dim" />
+
+            </FrameLayout>
+
+        </LinearLayout>
+
+        <TextView
+            style="@style/DiagSubtitle"
+            android:text="Live sensor, GNSS and inference health." />
+
+
+        <!-- ================================================= -->
+        <!-- SENSOR GRID -->
+        <!-- ================================================= -->
+
+        <GridLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:columnCount="2"
+            android:rowCount="2">
+
+            <!-- IMU -->
+            <LinearLayout
+                style="@style/DiagSensorCard"
+                android:layout_column="0"
+                android:layout_row="0"
+                android:layout_marginEnd="6dp"
+                android:layout_marginBottom="10dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <FrameLayout style="@style/DiagSensorIconBg">
+                        <ImageView
+                            style="@style/DiagSensorIcon"
+                            android:src="@drawable/ic_sensor_default" />
+                    </FrameLayout>
+
+                    <View
+                        android:layout_width="0dp"
+                        android:layout_height="1dp"
+                        android:layout_weight="1" />
+
+                    <View
+                        android:id="@+id/imuStatusDot"
+                        android:layout_width="7dp"
+                        android:layout_height="7dp"
+                        android:layout_marginEnd="5dp"
+                        android:background="@drawable/dot_warn" />
+
+                    <TextView
+                        android:id="@+id/imuStatusText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="sans-serif-condensed-medium"
+                        android:text="—"
+                        android:textColor="@color/fg_faint"
+                        android:textSize="10.5sp"
+                        android:textStyle="bold" />
+
+                </LinearLayout>
+
+                <TextView
+                    style="@style/DiagSensorTitle"
+                    android:text="IMU" />
+
+                <LinearLayout style="@style/DiagFieldRow">
+                    <TextView style="@style/DiagFieldLabel" android:text="Sample rate" />
+                    <TextView android:id="@+id/imuSampleRate" style="@style/DiagFieldValue" android:text="—" />
+                </LinearLayout>
+
+                <LinearLayout style="@style/DiagFieldRow">
+                    <TextView style="@style/DiagFieldLabel" android:text="Accel magnitude" />
+                    <TextView android:id="@+id/imuAccelMag" style="@style/DiagFieldValue" android:text="—" />
+                </LinearLayout>
+
+                <LinearLayout style="@style/DiagFieldRow">
+                    <TextView style="@style/DiagFieldLabel" android:text="Gyro magnitude" />
+                    <TextView android:id="@+id/imuGyroMag" style="@style/DiagFieldValue" android:text="—" />
+                </LinearLayout>
+
+            </LinearLayout>
+
+
+            <!-- GNSS -->
+            <LinearLayout
+                style="@style/DiagSensorCard"
+                android:layout_column="1"
+                android:layout_row="0"
+                android:layout_marginStart="6dp"
+                android:layout_marginBottom="10dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <FrameLayout style="@style/DiagSensorIconBg">
+                        <ImageView
+                            style="@style/DiagSensorIcon"
+                            android:src="@drawable/ic_satellite" />
+                    </FrameLayout>
+
+                    <View
+                        android:layout_width="0dp"
+                        android:layout_height="1dp"
+                        android:layout_weight="1" />
+
+                    <View
+                        android:id="@+id/gnssStatusDot"
+                        android:layout_width="7dp"
+                        android:layout_height="7dp"
+                        android:layout_marginEnd="5dp"
+                        android:background="@drawable/dot_warn" />
+
+                    <TextView
+                        android:id="@+id/gnssStatusText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="sans-serif-condensed-medium"
+                        android:text="—"
+                        android:textColor="@color/fg_faint"
+                        android:textSize="10.5sp"
+                        android:textStyle="bold" />
+
+                </LinearLayout>
+
+                <TextView
+                    style="@style/DiagSensorTitle"
+                    android:text="GNSS" />
+
+                <LinearLayout style="@style/DiagFieldRow">
+                    <TextView style="@style/DiagFieldLabel" android:text="Accuracy" />
+                    <TextView android:id="@+id/gnssAccuracy" style="@style/DiagFieldValue" android:text="—" />
+                </LinearLayout>
+
+                <LinearLayout style="@style/DiagFieldRow">
+                    <TextView style="@style/DiagFieldLabel" android:text="Fused speed" />
+                    <TextView android:id="@+id/gnssFusedSpeed" style="@style/DiagFieldValue" android:text="—" />
+                </LinearLayout>
+
+                <LinearLayout style="@style/DiagFieldRow">
+                    <TextView style="@style/DiagFieldLabel" android:text="Last fix" />
+                    <TextView android:id="@+id/gnssLastFix" style="@style/DiagFieldValue" android:text="—" />
+                </LinearLayout>
+
+            </LinearLayout>
+
+
+            <!-- AI ENGINE -->
+            <LinearLayout
+                style="@style/DiagSensorCard"
+                android:layout_column="0"
+                android:layout_row="1"
+                android:layout_marginEnd="6dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <FrameLayout style="@style/DiagSensorIconBg">
+                        <ImageView
+                            style="@style/DiagSensorIcon"
+                            android:src="@drawable/ic_gauge" />
+                    </FrameLayout>
+
+                    <View
+                        android:layout_width="0dp"
+                        android:layout_height="1dp"
+                        android:layout_weight="1" />
+
+                    <View
+                        android:id="@+id/aiStatusDot"
+                        android:layout_width="7dp"
+                        android:layout_height="7dp"
+                        android:layout_marginEnd="5dp"
+                        android:background="@drawable/dot_warn" />
+
+                    <TextView
+                        android:id="@+id/aiStatusText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="sans-serif-condensed-medium"
+                        android:text="—"
+                        android:textColor="@color/fg_faint"
+                        android:textSize="10.5sp"
+                        android:textStyle="bold" />
+
+                </LinearLayout>
+
+                <TextView
+                    style="@style/DiagSensorTitle"
+                    android:text="AI Engine" />
+
+                <LinearLayout style="@style/DiagFieldRow">
+                    <TextView style="@style/DiagFieldLabel" android:text="Model" />
+                    <TextView style="@style/DiagFieldValue" android:text="ASTRA-Speed" />
+                </LinearLayout>
+
+                <LinearLayout style="@style/DiagFieldRow">
+                    <TextView style="@style/DiagFieldLabel" android:text="Est. speed" />
+                    <TextView android:id="@+id/aiSpeed" style="@style/DiagFieldValue" android:text="—" />
+                </LinearLayout>
+
+                <LinearLayout style="@style/DiagFieldRow">
+                    <TextView style="@style/DiagFieldLabel" android:text="Inference" />
+                    <TextView style="@style/DiagFieldValue" android:text="On-device" />
+                </LinearLayout>
+
+            </LinearLayout>
+
+
+            <!-- MAP ENGINE -->
+            <LinearLayout
+                style="@style/DiagSensorCard"
+                android:layout_column="1"
+                android:layout_row="1"
+                android:layout_marginStart="6dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <FrameLayout style="@style/DiagSensorIconBg">
+                        <ImageView
+                            style="@style/DiagSensorIcon"
+                            android:src="@drawable/ic_route" />
+                    </FrameLayout>
+
+                    <View
+                        android:layout_width="0dp"
+                        android:layout_height="1dp"
+                        android:layout_weight="1" />
+
+                    <View
+                        android:layout_width="7dp"
+                        android:layout_height="7dp"
+                        android:layout_marginEnd="5dp"
+                        android:background="@drawable/dot_checking" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="sans-serif-condensed-medium"
+                        android:text="NOT WIRED"
+                        android:textColor="@color/fg_faint"
+                        android:textSize="10.5sp"
+                        android:textStyle="bold" />
+
+                </LinearLayout>
+
+                <TextView
+                    style="@style/DiagSensorTitle"
+                    android:text="Map Engine" />
+
+                <LinearLayout style="@style/DiagFieldRow">
+                    <TextView style="@style/DiagFieldLabel" android:text="Road matching" />
+                    <TextView style="@style/DiagFieldValue" android:text="Not connected" />
+                </LinearLayout>
+
+                <LinearLayout style="@style/DiagFieldRow">
+                    <TextView style="@style/DiagFieldLabel" android:text="Offline network" />
+                    <TextView style="@style/DiagFieldValue" android:text="Not connected" />
+                </LinearLayout>
+
+                <LinearLayout style="@style/DiagFieldRow">
+                    <TextView style="@style/DiagFieldLabel" android:text="Status" />
+                    <TextView style="@style/DiagFieldValue" android:text="Planned" />
+                </LinearLayout>
+
+            </LinearLayout>
+
+        </GridLayout>
+
+
+        <!-- ================================================= -->
+        <!-- CALIBRATION & ALIGNMENT -->
+        <!-- ================================================= -->
+
+        <TextView
+            style="@style/DiagSectionLabel"
+            android:text="CALIBRATION &amp; ALIGNMENT" />
+
+        <LinearLayout
+            style="@style/DiagSensorCard"
+            android:layout_width="match_parent"
+            android:layout_marginEnd="0dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <View
+                    android:id="@+id/calibDot"
+                    android:layout_width="8dp"
+                    android:layout_height="8dp"
+                    android:layout_marginEnd="8dp"
+                    android:background="@drawable/dot_warn" />
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:fontFamily="sans-serif-condensed-medium"
+                    android:text="Device → Vehicle Transform"
+                    android:textColor="@color/fg"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/calibChip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_dvfc_status_chip_waiting"
+                    android:fontFamily="monospace"
+                    android:paddingHorizontal="10dp"
+                    android:paddingVertical="3dp"
+                    android:text="PENDING"
+                    android:textColor="@color/warn"
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+                    <TextView style="@style/DiagFieldLabel" android:text="Yaw offset" />
+                    <TextView
+                        android:id="@+id/calibYawOffset"
+                        style="@style/DiagFieldValue"
+                        android:layout_marginTop="3dp"
+                        android:text="—" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+                    <TextView style="@style/DiagFieldLabel" android:text="Calibrated" />
+                    <TextView
+                        android:id="@+id/calibAge"
+                        style="@style/DiagFieldValue"
+                        android:layout_marginTop="3dp"
+                        android:text="—" />
+                </LinearLayout>
+
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/btnRecalibrate"
+                style="@style/Widget.AppCompat.Button.Borderless"
+                android:layout_width="match_parent"
+                android:layout_height="46dp"
+                android:layout_marginTop="14dp"
+                android:background="@drawable/bg_secondary_button"
+                android:drawableStart="@drawable/ic_compass"
+                android:drawablePadding="8dp"
+                android:gravity="center"
+                android:text="Recalibrate sensors"
+                android:textAllCaps="false"
+                android:textColor="@color/fg"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+        </LinearLayout>
+
+
+        <!-- ================================================= -->
+        <!-- LIVE SIGNALS -->
+        <!-- ================================================= -->
+
+        <TextView
+            style="@style/DiagSectionLabel"
+            android:text="LIVE SIGNALS" />
+
+        <LinearLayout
+            android:id="@+id/tileAccel"
+            style="@style/DiagSignalTile"
+            android:layout_marginTop="0dp"
+            android:background="@drawable/bg_signal_tile_cyan">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <TextView style="@style/DiagSignalLabel" android:text="ACCELERATION" />
+
+                <TextView
+                    android:id="@+id/accelValue"
+                    style="@style/DiagSignalValue"
+                    android:textColor="@color/blue"
+                    android:text="—" />
+
+            </LinearLayout>
+
+            <com.rishabh.astranav.home.SparklineView
+                android:id="@+id/accelSparkline"
+                android:layout_width="match_parent"
+                android:layout_height="44dp"
+                android:layout_marginTop="8dp" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/tileGyro"
+            style="@style/DiagSignalTile"
+            android:background="@drawable/bg_signal_tile_cyan">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <TextView style="@style/DiagSignalLabel" android:text="GYROSCOPE" />
+
+                <TextView
+                    android:id="@+id/gyroValue"
+                    style="@style/DiagSignalValue"
+                    android:textColor="@color/cyan"
+                    android:text="—" />
+
+            </LinearLayout>
+
+            <com.rishabh.astranav.home.SparklineView
+                android:id="@+id/gyroSparkline"
+                android:layout_width="match_parent"
+                android:layout_height="44dp"
+                android:layout_marginTop="8dp" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/tileSpeed"
+            style="@style/DiagSignalTile"
+            android:background="@drawable/bg_signal_tile_good">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <TextView style="@style/DiagSignalLabel" android:text="ESTIMATED VELOCITY" />
+
+                <TextView
+                    android:id="@+id/speedValueSignal"
+                    style="@style/DiagSignalValue"
+                    android:textColor="@color/good"
+                    android:text="—" />
+
+            </LinearLayout>
+
+            <com.rishabh.astranav.home.SparklineView
+                android:id="@+id/speedSparkline"
+                android:layout_width="match_parent"
+                android:layout_height="44dp"
+                android:layout_marginTop="8dp" />
+
+        </LinearLayout>
+
+
+        <!-- ================================================= -->
+        <!-- SECONDARY: full capability scan -->
+        <!-- ================================================= -->
+
+        <LinearLayout
+            android:id="@+id/btnFullScan"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:background="@drawable/bg_row_default"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="14dp"
+            android:paddingVertical="14dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Run full sensor capability scan"
+                android:textColor="@color/fg_dim"
+                android:textSize="12.5sp" />
+
+            <ImageView
+                android:layout_width="14dp"
+                android:layout_height="14dp"
+                android:src="@drawable/ic_chevron_right"
+                app:tint="@color/fg_faint" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+</androidx.core.widget.NestedScrollView>
