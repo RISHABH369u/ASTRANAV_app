@@ -7,11 +7,11 @@ import com.rishabh.astranav.dvfc.DvfcCalibrationStore
 import com.rishabh.astranav.dvfc.sensor.DeviceSensorSample
 import com.rishabh.astranav.dvfc.sensor.SensorAdapter
 import com.rishabh.astranav.navigation.eskf.Eskf
-import com.rishabh.astranav.navigation.eskf.NavigationState
 import com.rishabh.astranav.navigation.eskf.Quaternion
 import com.rishabh.astranav.navigation.eskf.Vec3
 import com.rishabh.astranav.navigation.zupt.ZuptDetector
 import com.rishabh.astranav.replay.ReplayFrameMode
+
 
 import kotlin.math.atan2
 import kotlin.math.sqrt
@@ -22,7 +22,7 @@ import kotlin.math.sqrt
  * ASTRANAV NAVIGATION RUNTIME
  * =============================================================
  *
- * Runtime V1:
+ * LIVE:
  *
  * Android Sensors
  *       ↓
@@ -42,6 +42,22 @@ import kotlin.math.sqrt
  *       ↓
  * NavigationSolution
  *
+ *
+ * IO-VNBD REPLAY:
+ *
+ * IO-VNBD S-CSV
+ *       ↓
+ * IoVnbdReplaySession
+ *       ↓
+ * DeviceSensorSample
+ *       ↓
+ * ReplayFrameMode.DATASET_FRAME
+ *       ↓
+ * NO CURRENT-PHONE DVFC
+ *       ↓
+ * ASTRA-Core ESKF
+ *
+ *
  * IMPORTANT:
  *
  * - ESKF is the authoritative navigation state.
@@ -55,12 +71,7 @@ import kotlin.math.sqrt
  *
  * This class does NOT replace DVFCController.
  * DVFC remains responsible for calibration/UI/diagnostics.
- *
- *
  */
-@Volatile
-private var replayFrameMode: ReplayFrameMode? = null
-
 class AstraNavigationEngine(
     private val context: Context,
     private val eskf: Eskf = Eskf(),
@@ -87,24 +98,75 @@ class AstraNavigationEngine(
         private const val MAX_NHC_SPEED_MPS =
             60.0
     }
-    fun setReplayFrameMode(mode: ReplayFrameMode?) {
-        replayFrameMode = mode
 
-        if (mode == ReplayFrameMode.DATASET_FRAME) {
-            dvfcTransform = null
-        } else if (mode == ReplayFrameMode.DVFC) {
-            dvfcTransform =
-                DvfcCalibrationStore.load(
-                    context.applicationContext
-                )
-        }
+
+    // ---------------------------------------------------------
+    // REPLAY FRAME MODE
+    // ---------------------------------------------------------
+
+    /**
+     * Current replay interpretation mode.
+     *
+     * null:
+     *     Normal live navigation.
+     *
+     * DATASET_FRAME:
+     *     IO-VNBD replay. Current-device DVFC is disabled.
+     *
+     * DVFC:
+     *     Experimental replay using persisted DVFC.
+     */
+    @Volatile
+    private var replayFrameMode:
+            ReplayFrameMode? =
+        null
+
+
+    /**
+     * Explicitly changes the replay frame mode.
+     *
+     * This method is useful for controlled replay experiments.
+     *
+     * DATASET_FRAME:
+     *     Forces DVFC off.
+     *
+     * DVFC:
+     *     Loads persisted calibration.
+     *
+     * null:
+     *     Returns to normal live-mode calibration behavior.
+     */
+    @Synchronized
+    fun setReplayFrameMode(
+        mode: ReplayFrameMode?
+    ) {
+
+        replayFrameMode =
+            mode
+
+        dvfcTransform =
+            when (mode) {
+
+                ReplayFrameMode.DATASET_FRAME ->
+                    null
+
+                ReplayFrameMode.DVFC ->
+                    DvfcCalibrationStore.load(
+                        context.applicationContext
+                    )
+
+                null ->
+                    DvfcCalibrationStore.load(
+                        context.applicationContext
+                    )
+            }
 
         Log.i(
             TAG,
-            "Replay frame mode = $mode, DVFC=${dvfcTransform != null}"
+            "Replay frame mode = $mode, " +
+                    "DVFC=${dvfcTransform != null}"
         )
     }
-
 
 
     // ---------------------------------------------------------
@@ -113,10 +175,13 @@ class AstraNavigationEngine(
 
     private val sensorAdapter =
         SensorAdapter(
-            context = context.applicationContext
+            context =
+                context.applicationContext
         ) { sample ->
 
-            onSensorSample(sample)
+            onSensorSample(
+                sample
+            )
         }
 
 
@@ -138,18 +203,28 @@ class AstraNavigationEngine(
         null
 
     /*
-     * Last timestamp actually accepted by the
-     * navigation runtime.
+     * Last timestamp seen by the navigation runtime.
      */
     private var lastTimestampNs =
         0L
 
     /*
+ * True after the first valid sample has established
+ * the navigation timeline.
+ *
+ * IMPORTANT:
+ * Timestamp 0 is valid for deterministic replay.
+ * Therefore lastTimestampNs == 0L cannot be used
+ * as the initialization sentinel.
+ */
+    private var hasLastTimestamp =
+        false
+
+    /*
      * Number of samples received while the
      * navigation runtime is running.
      *
-     * This counter is incremented exactly once
-     * inside onSensorSample().
+     * Incremented exactly once inside onSensorSample().
      */
     private var processedSampleCount =
         0L
@@ -171,9 +246,7 @@ class AstraNavigationEngine(
      * Navigation runtime only consumes the persisted
      * Device → Vehicle transform.
      *
-     * We intentionally reload it when navigation starts,
-     * so the navigation runtime never performs its own
-     * independent calibration.
+     * In replay DATASET_FRAME mode this is explicitly null.
      */
     private var dvfcTransform =
         DvfcCalibrationStore.load(
@@ -193,17 +266,21 @@ class AstraNavigationEngine(
         }
 
         /*
-         * Refresh transform at start.
-         *
-         * If the user completed/recalibrated DVFC before
-         * entering navigation, the latest transform is used.
+         * Starting normal live navigation exits replay mode.
+         */
+        replayFrameMode =
+            null
+
+        /*
+         * Refresh the latest persisted calibration.
          */
         dvfcTransform =
             DvfcCalibrationStore.load(
                 context.applicationContext
             )
 
-        running = true
+        running =
+            true
 
         sensorAdapter.start()
 
@@ -226,7 +303,8 @@ class AstraNavigationEngine(
             return
         }
 
-        running = false
+        running =
+            false
 
         sensorAdapter.stop()
 
@@ -246,9 +324,16 @@ class AstraNavigationEngine(
 
         sensorAdapter.stop()
 
-        running = false
+        running =
+            false
 
         eskf.reset()
+
+        /*
+         * Return to normal live-navigation mode.
+         */
+        replayFrameMode =
+            null
 
         /*
          * Reset runtime timing.
@@ -256,6 +341,8 @@ class AstraNavigationEngine(
         lastTimestampNs =
             0L
 
+        hasLastTimestamp =
+            false
         /*
          * Reset sample counter.
          */
@@ -290,103 +377,99 @@ class AstraNavigationEngine(
 
 
     // ---------------------------------------------------------
-// REPLAY SUPPORT
-// ---------------------------------------------------------
+    // REPLAY SUPPORT
+    // ---------------------------------------------------------
 
     /**
-     * Resets the navigation runtime for offline IO-VNBD replay.
+     * Resets the navigation runtime for offline replay.
      *
-     * Unlike reset(), this immediately enables the runtime without
-     * starting the Android SensorAdapter. Replay samples are then
-     * injected through processReplaySample().
+     * Unlike reset(), this immediately enables the runtime
+     * without starting the Android SensorAdapter.
+     *
+     * DATASET_FRAME:
+     *     No current-device DVFC is used.
+     *
+     * DVFC:
+     *     Persisted Device → Vehicle calibration is used.
      */
     @Synchronized
-    fun resetForReplay() {
+    fun resetForReplay(
+        frameMode: ReplayFrameMode =
+            ReplayFrameMode.DATASET_FRAME
+    ) {
 
         sensorAdapter.stop()
 
-        running = true
+        running =
+            true
 
         eskf.reset()
 
-        lastTimestampNs = 0L
+        lastTimestampNs =
+            0L
 
-        processedSampleCount = 0L
+        hasLastTimestamp =
+            false
 
-        stationarySampleCount = 0
+        processedSampleCount =
+            0L
 
-        movingSampleCount = 0
+        stationarySampleCount =
+            0
 
-        latestSensorSample = null
+        movingSampleCount =
+            0
 
-        latestSolution = NavigationSolution()
+        latestSensorSample =
+            null
+
+        latestSolution =
+            NavigationSolution()
+
+        replayFrameMode =
+            frameMode
 
         dvfcTransform =
-            DvfcCalibrationStore.load(
-                context.applicationContext
-            )
+            when (frameMode) {
+
+                ReplayFrameMode.DATASET_FRAME ->
+                    null
+
+                ReplayFrameMode.DVFC ->
+                    DvfcCalibrationStore.load(
+                        context.applicationContext
+                    )
+            }
 
         Log.i(
             TAG,
             "ASTRANAV replay runtime reset. " +
+                    "frameMode=$frameMode " +
                     "DVFC=${dvfcTransform != null}"
         )
-
-        @Synchronized
-
-        fun resetForReplay(
-            frameMode: ReplayFrameMode = ReplayFrameMode.DATASET_FRAME
-        ) {
-            sensorAdapter.stop()
-
-            running = true
-
-            eskf.reset()
-
-            lastTimestampNs = 0L
-            processedSampleCount = 0L
-            stationarySampleCount = 0
-            movingSampleCount = 0
-
-            latestSensorSample = null
-            latestSolution = NavigationSolution()
-
-            replayFrameMode = frameMode
-
-            dvfcTransform =
-                when (frameMode) {
-                    ReplayFrameMode.DATASET_FRAME ->
-                        null
-
-                    ReplayFrameMode.DVFC ->
-                        DvfcCalibrationStore.load(
-                            context.applicationContext
-                        )
-                }
-
-            Log.i(
-                TAG,
-                "ASTRANAV replay runtime reset. " +
-                        "frameMode=$frameMode " +
-                        "DVFC=${dvfcTransform != null}"
-            )
-        }
     }
 
 
     /**
-     * Injects one offline replay sample through the exact same
+     * Injects one offline replay sample through the same
      * navigation pipeline used by the live runtime.
      */
     fun processReplaySample(
         sample: DeviceSensorSample
     ) {
+
         if (!running) {
-            resetForReplay()
+
+            resetForReplay(
+                ReplayFrameMode.DATASET_FRAME
+            )
         }
 
-        onSensorSample(sample)
+        onSensorSample(
+            sample
+        )
     }
+
 
     // ---------------------------------------------------------
     // REFRESH DVFC
@@ -394,12 +477,32 @@ class AstraNavigationEngine(
 
     /**
      * Reloads the currently persisted Device → Vehicle
-     * transform without restarting the whole engine.
+     * transform.
      *
-     * Useful after the user completes/recalibrates DVFC.
+     * IMPORTANT:
+     *
+     * If replay is explicitly running in DATASET_FRAME mode,
+     * DVFC remains disabled.
      */
     @Synchronized
     fun refreshDvfcTransform() {
+
+        if (
+            replayFrameMode ==
+            ReplayFrameMode.DATASET_FRAME
+        ) {
+
+            dvfcTransform =
+                null
+
+            Log.i(
+                TAG,
+                "DVFC refresh ignored: " +
+                        "replay is using DATASET_FRAME"
+            )
+
+            return
+        }
 
         dvfcTransform =
             DvfcCalibrationStore.load(
@@ -445,17 +548,30 @@ class AstraNavigationEngine(
         // -----------------------------------------------------
 
         /*
-         * SensorAdapter already performs synchronization
-         * and timestamp validation.
-         *
-         * ESKF performs its own final monotonic/dt validation.
-         */
+ * TIMESTAMP VALIDATION
+ *
+ * Timestamp 0 is VALID for deterministic replay.
+ *
+ * Valid replay timeline:
+ *
+ *     0 ns
+ *     100,000,000 ns
+ *     200,000,000 ns
+ *     300,000,000 ns
+ *     ...
+ *
+ * Only negative timestamps are invalid.
+ *
+ * IMPORTANT:
+ * lastTimestampNs represents the LAST ACCEPTED ESKF
+ * prediction, not merely the last sample received.
+ */
 
-        if (sample.timestampNs <= 0L) {
+        if (sample.timestampNs < 0L) {
 
             Log.w(
                 TAG,
-                "Ignoring invalid timestamp: " +
+                "Ignoring invalid negative timestamp: " +
                         sample.timestampNs
             )
 
@@ -463,8 +579,9 @@ class AstraNavigationEngine(
         }
 
         if (
-            lastTimestampNs != 0L &&
-            sample.timestampNs <= lastTimestampNs
+            hasLastTimestamp &&
+            sample.timestampNs <=
+            lastTimestampNs
         ) {
 
             Log.w(
@@ -477,8 +594,12 @@ class AstraNavigationEngine(
             return
         }
 
-        lastTimestampNs =
-            sample.timestampNs
+        /*
+         * DO NOT update lastTimestampNs here.
+         *
+         * ESKF must decide whether this timestamp becomes
+         * part of the authoritative navigation timeline.
+         */
 
 
         // -----------------------------------------------------
@@ -518,14 +639,14 @@ class AstraNavigationEngine(
 
 
         /*
-         * Apply the persisted DVFC transform when available.
+         * Apply the persisted DVFC transform only when
+         * the current runtime mode allows it.
          *
-         * If calibration is not available yet, keep the sample
-         * in device frame rather than inventing a transform.
+         * DATASET_FRAME:
+         *     dvfcTransform is guaranteed to be null.
          *
-         * The navigation solution exposes dvfcActive=false so
-         * the caller can prevent presenting this as calibrated
-         * vehicle navigation.
+         * LIVE:
+         *     persisted DVFC is used when available.
          */
         val vehicleSpecificForce =
             dvfcTransform
@@ -611,16 +732,40 @@ class AstraNavigationEngine(
             Log.w(
                 TAG,
                 "ESKF prediction rejected: " +
-                        prediction.reason
+                        prediction.reason +
+                        " timestamp=${sample.timestampNs}ns"
             )
 
+            /*
+             * IMPORTANT:
+             *
+             * Do NOT advance lastTimestampNs.
+             *
+             * ESKF rejected this prediction, therefore the
+             * authoritative navigation state has not advanced.
+             */
             updateSolution(
-                sample = sample,
-                predictionAccepted = false
+                sample =
+                    sample,
+
+                predictionAccepted =
+                    false
             )
 
             return
         }
+
+        /*
+         * Prediction was accepted.
+         *
+         * Only now commit this timestamp as the last
+         * authoritative navigation timestamp.
+         */
+        lastTimestampNs =
+            sample.timestampNs
+
+        hasLastTimestamp =
+            true
 
 
         // -----------------------------------------------------
@@ -696,13 +841,15 @@ class AstraNavigationEngine(
 
             stationarySampleCount++
 
-            movingSampleCount = 0
+            movingSampleCount =
+                0
 
         } else {
 
             movingSampleCount++
 
-            stationarySampleCount = 0
+            stationarySampleCount =
+                0
         }
 
 
@@ -742,9 +889,14 @@ class AstraNavigationEngine(
 
                     gyroBody =
                         Vec3(
-                            x = gyroX,
-                            y = gyroY,
-                            z = gyroZ
+                            x =
+                                gyroX,
+
+                            y =
+                                gyroY,
+
+                            z =
+                                gyroZ
                         )
                 )
 
@@ -842,6 +994,7 @@ class AstraNavigationEngine(
                         "zaru=$zaruAccepted " +
                         "nhc=$nhcAccepted " +
                         "dvfc=${dvfcTransform != null} " +
+                        "frameMode=$replayFrameMode " +
                         "samples=$processedSampleCount"
             )
         }
@@ -853,15 +1006,26 @@ class AstraNavigationEngine(
     // ---------------------------------------------------------
 
     private fun updateSolution(
-        sample: DeviceSensorSample,
-        predictionAccepted: Boolean,
-        zuptActive: Boolean =
+        sample:
+        DeviceSensorSample,
+
+        predictionAccepted:
+        Boolean,
+
+        zuptActive:
+        Boolean =
             false,
-        zuptAccepted: Boolean =
+
+        zuptAccepted:
+        Boolean =
             false,
-        zaruAccepted: Boolean =
+
+        zaruAccepted:
+        Boolean =
             false,
-        nhcAccepted: Boolean =
+
+        nhcAccepted:
+        Boolean =
             false
     ) {
 
@@ -892,13 +1056,16 @@ class AstraNavigationEngine(
          */
         val horizontalVelocityMagnitude =
             sqrt(
-                velocity.x * velocity.x +
-                        velocity.y * velocity.y
+                velocity.x *
+                        velocity.x +
+                        velocity.y *
+                        velocity.y
             )
 
         val heading =
             if (
-                horizontalVelocityMagnitude > 0.20
+                horizontalVelocityMagnitude >
+                0.20
             ) {
 
                 Math.toDegrees(

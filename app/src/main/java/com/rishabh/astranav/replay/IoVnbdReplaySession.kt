@@ -10,7 +10,17 @@ import com.rishabh.astranav.navigation.NavigationSolution
 
 import kotlin.math.sqrt
 
-private var replayStartTimeMs = 0L
+
+/**
+ * Replay clock origin.
+ *
+ * IO-VNBD timestamps are relative to the recording session.
+ * We rebase them to zero before sending them into ASTRANAV.
+ */
+private var replayStartTimeMs =
+    0L
+
+
 /**
  * =============================================================
  * IO-VNBD REPLAY DATASET
@@ -24,19 +34,28 @@ data class ReplayDataset(
 
     val durationMs: Long
         get() {
+
             if (phone.size < 2) {
                 return 0L
             }
 
             val firstTimeMs =
-                phone.first().timeMs.toLong()
+                phone
+                    .first()
+                    .timeMs
+                    .toLong()
 
             val lastTimeMs =
-                phone.last().timeMs.toLong()
+                phone
+                    .last()
+                    .timeMs
+                    .toLong()
 
-            return lastTimeMs - firstTimeMs
+            return lastTimeMs -
+                    firstTimeMs
         }
 }
+
 
 /**
  * =============================================================
@@ -44,10 +63,17 @@ data class ReplayDataset(
  * =============================================================
  */
 data class ReplayFrame(
-    val phone: IovnbdPhoneSample,
-    val vehicle: IovnbdVehicleSample?,
-    val solution: NavigationSolution,
-    val metrics: ReplayMetricSnapshot?
+    val phone:
+    IovnbdPhoneSample,
+
+    val vehicle:
+    IovnbdVehicleSample?,
+
+    val solution:
+    NavigationSolution,
+
+    val metrics:
+    ReplayMetricSnapshot?
 )
 
 
@@ -62,28 +88,45 @@ data class ReplayFrame(
  *   ↓
  * DeviceSensorSample
  *   ↓
- * SAME AstraNavigationEngine
+ * ReplayFrameMode.DATASET_FRAME
+ *   ↓
+ * AstraNavigationEngine
  *   ↓
  * NavigationSolution
  *
  * V-CSV is used only as reference truth.
+ *
+ * IMPORTANT:
+ *
+ * IO-VNBD replay defaults to DATASET_FRAME.
+ *
+ * The current phone running the replay is NOT used to
+ * calibrate the historical IO-VNBD sensor data.
  */
 class IoVnbdReplaySession(
-    context: Context,
-    private val engine: AstraNavigationEngine,
-    private val frameMode: ReplayFrameMode =
+    context:
+    Context,
+
+    private val engine:
+    AstraNavigationEngine,
+
+    private val frameMode:
+    ReplayFrameMode =
         ReplayFrameMode.DATASET_FRAME
 ) {
 
     private val parser =
-        IovnbdCsvParser(context)
+        IovnbdCsvParser(
+            context
+        )
 
     val metrics =
         ReplayMetricsEngine()
 
 
     private var dataset:
-            ReplayDataset? = null
+            ReplayDataset? =
+        null
 
     private var index =
         -1
@@ -95,19 +138,33 @@ class IoVnbdReplaySession(
         -1
 
 
-    fun frameMode(): ReplayFrameMode {
+    /**
+     * Returns the frame interpretation mode used
+     * by this replay session.
+     */
+    fun frameMode():
+            ReplayFrameMode {
+
         return frameMode
     }
+
 
     // =========================================================
     // LOAD
     // =========================================================
 
     fun load(
-        phoneUri: Uri,
-        vehicleUri: Uri?,
-        id: String = "IO-VNBD"
-    ): ReplayDataset {
+        phoneUri:
+        Uri,
+
+        vehicleUri:
+        Uri?,
+
+        id:
+        String =
+            "IO-VNBD"
+    ):
+            ReplayDataset {
 
         val phone =
             parser.readPhone(
@@ -124,15 +181,25 @@ class IoVnbdReplaySession(
 
         val vehicle =
             vehicleUri?.let {
-                parser.readVehicle(it)
+
+                parser.readVehicle(
+                    it
+                )
+
             } ?: emptyList()
 
 
         dataset =
             ReplayDataset(
-                id = id,
-                phone = phone,
-                vehicle = vehicle
+
+                id =
+                    id,
+
+                phone =
+                    phone,
+
+                vehicle =
+                    vehicle
             )
 
 
@@ -160,10 +227,37 @@ class IoVnbdReplaySession(
 
         metrics.reset()
 
+
+        /*
+         * IMPORTANT:
+         *
+         * Explicitly tell the engine which frame mode
+         * this replay session uses.
+         *
+         * Default:
+         * DATASET_FRAME → current-phone DVFC disabled.
+         */
         engine.resetForReplay(
-            frameMode = frameMode
+            frameMode =
+                frameMode
         )
 
+
+        /*
+         * Rebase the recorded timestamp to zero.
+         *
+         * Example:
+         *
+         * recorded:
+         *     2922 ms
+         *     3022 ms
+         *     3121 ms
+         *
+         * replay:
+         *     0 ms
+         *     100 ms
+         *     199 ms
+         */
         replayStartTimeMs =
             dataset
                 ?.phone
@@ -179,8 +273,10 @@ class IoVnbdReplaySession(
     // =========================================================
 
     fun sampleAt(
-        progress: Float
-    ): ReplayFrame? {
+        progress:
+        Float
+    ):
+            ReplayFrame? {
 
         val d =
             dataset
@@ -213,17 +309,23 @@ class IoVnbdReplaySession(
         val targetIndex =
             d.phone
                 .indexOfLast {
-                    it.timeMs <= targetTime
+
+                    it.timeMs <=
+                            targetTime
+
                 }
-                .coerceAtLeast(0)
+                .coerceAtLeast(
+                    0
+                )
 
 
         /*
          * If the user dragged backwards,
-         * rebuild the navigation state from the beginning.
+         * rebuild navigation state from the beginning.
          */
         if (
-            targetIndex < index
+            targetIndex <
+            index
         ) {
 
             reset()
@@ -232,15 +334,18 @@ class IoVnbdReplaySession(
 
         /*
          * Process every phone sample between
-         * the current replay position and target.
+         * current replay position and target.
          */
         while (
-            index < targetIndex
+            index <
+            targetIndex
         ) {
 
             index++
 
+
             engine.processReplaySample(
+
                 toDeviceSample(
                     d.phone[index]
                 )
@@ -251,11 +356,17 @@ class IoVnbdReplaySession(
         /*
          * Initial sample.
          */
-        if (index < 0) {
+        if (
+            index <
+            0
+        ) {
 
-            index = 0
+            index =
+                0
+
 
             engine.processReplaySample(
+
                 toDeviceSample(
                     d.phone[0]
                 )
@@ -272,12 +383,19 @@ class IoVnbdReplaySession(
         // -----------------------------------------------------
 
         while (
-            truthIndex + 1 < d.vehicle.size &&
+
+            truthIndex + 1 <
+            d.vehicle.size &&
+
             relativeVehicleTimeMs(
-                d.vehicle[truthIndex + 1]
+                d.vehicle[
+                    truthIndex + 1
+                ]
             ) <=
+
             phoneSample.timeMs -
             startTime
+
         ) {
 
             truthIndex++
@@ -303,6 +421,7 @@ class IoVnbdReplaySession(
         // -----------------------------------------------------
 
         val snapshot =
+
             if (
                 truth != null &&
                 index != metricIndex
@@ -337,6 +456,7 @@ class IoVnbdReplaySession(
                 )
 
             } else {
+
                 null
             }
 
@@ -363,8 +483,10 @@ class IoVnbdReplaySession(
     // =========================================================
 
     private fun relativeVehicleTimeMs(
-        sample: IovnbdVehicleSample
-    ): Long {
+        sample:
+        IovnbdVehicleSample
+    ):
+            Long {
 
         val d =
             dataset
@@ -374,18 +496,24 @@ class IoVnbdReplaySession(
         if (
             d.vehicle.isEmpty()
         ) {
+
             return 0L
         }
 
 
         return (
+
                 (
                         sample.timeSeconds -
+
                                 d.vehicle
                                     .first()
                                     .timeSeconds
+
                         ) *
+
                         1000.0
+
                 ).toLong()
     }
 
@@ -395,8 +523,10 @@ class IoVnbdReplaySession(
     // =========================================================
 
     private fun toDeviceSample(
-        sample: IovnbdPhoneSample
-    ): DeviceSensorSample {
+        sample:
+        IovnbdPhoneSample
+    ):
+            DeviceSensorSample {
 
         val gravity =
             floatArrayOf(
@@ -457,16 +587,30 @@ class IoVnbdReplaySession(
 
                         sample.gravityZ *
                         sample.gravityZ
+
             ).toFloat()
+
+
+        /*
+         * IMPORTANT:
+         *
+         * Timestamp is rebased to the beginning of
+         * the recorded IO-VNBD session.
+         *
+         * We are NOT using the current phone clock.
+         */
+        val replayTimestampNs =
+            (
+                    sample.timeMs.toLong() -
+                            replayStartTimeMs
+                    ) *
+                    1_000_000L
 
 
         return DeviceSensorSample(
 
             timestampNs =
-                (
-                        sample.timeMs.toLong() -
-                                replayStartTimeMs
-                        ) * 1_000_000L,
+                replayTimestampNs,
 
 
             acceleration =
@@ -495,6 +639,13 @@ class IoVnbdReplaySession(
                 linearAcceleration,
 
 
+            /*
+             * Do not invent a live-phone quaternion.
+             *
+             * Dataset orientation is preserved separately
+             * through the available recorded orientation
+             * fields in DeviceSensorSample.
+             */
             quaternion =
                 Quat.IDENTITY,
 
