@@ -851,6 +851,29 @@ class AstraNavigationEngine(
 
 
     // ---------------------------------------------------------
+    // REPLAY / BENCHMARK INPUT
+    // ---------------------------------------------------------
+
+    @Synchronized
+    fun resetForReplay() {
+        sensorAdapter.stop()
+        running = true
+        eskf.reset()
+        lastTimestampNs = 0L
+        processedSampleCount = 0L
+        stationarySampleCount = 0
+        movingSampleCount = 0
+        latestSensorSample = null
+        latestSolution = NavigationSolution()
+        dvfcTransform = DvfcCalibrationStore.load(context.applicationContext)
+    }
+
+    fun processReplaySample(sample: DeviceSensorSample) {
+        if (!running) resetForReplay()
+        onSensorSample(sample)
+    }
+
+    // ---------------------------------------------------------
     // PUBLIC STATE
     // ---------------------------------------------------------
 
