@@ -14,13 +14,13 @@ data class ReplayFrame(val phone:IovnbdPhoneSample,val vehicle:IovnbdVehicleSamp
 
 class IoVnbdReplaySession(context:Context,private val engine:AstraNavigationEngine){
  private val parser=IovnbdCsvParser(context);val metrics=ReplayMetricsEngine()
- private var ds:ReplayDataset?=null;private var index=-1;private var truthIndex=0
+ private var ds:ReplayDataset?=null;private var index=-1;private var truthIndex=0;private var metricIndex=-1
  fun load(phoneUri:Uri,vehicleUri:Uri?,id:String="IO-VNBD"):ReplayDataset{
   val p=parser.readPhone(phoneUri);require(p.isNotEmpty()){"No valid smartphone samples"}
   val v=vehicleUri?.let{parser.readVehicle(it)}?:emptyList()
   ds=ReplayDataset(id,p,v);reset();return ds!!
  }
- fun reset(){index=-1;truthIndex=0;metrics.reset();engine.resetForReplay()}
+ fun reset(){index=-1;truthIndex=0;metricIndex=-1;metrics.reset();engine.resetForReplay()}
  fun sampleAt(progress:Float):ReplayFrame?{
   val d=ds?:return null;if(d.phone.isEmpty())return null
   val start=d.phone.first().timeMs;val target=start+(d.durationMs*progress.coerceIn(0f,1f)).toLong()
@@ -31,7 +31,7 @@ class IoVnbdReplaySession(context:Context,private val engine:AstraNavigationEngi
   val p=d.phone[index]
   while(truthIndex+1<d.vehicle.size && relMs(d.vehicle[truthIndex+1],d.vehicle)<=p.timeMs-start)truthIndex++
   val truth=d.vehicle.getOrNull(truthIndex);val sol=engine.state()
-  val met=truth?.let{metrics.update(sol.position.x,sol.position.y,sol.speedMps,sol.headingDegrees,it)}
+  val met=if(truth!=null && index!=metricIndex){metricIndex=index;metrics.update(sol.position.x,sol.position.y,sol.speedMps,sol.headingDegrees,truth)}else null
   return ReplayFrame(p,truth,sol,met)
  }
  private fun relMs(v:IovnbdVehicleSample):Long{val d=ds?:return 0L;return if(d.vehicle.isEmpty())0L else ((v.timeSeconds-d.vehicle.first().timeSeconds)*1000.0).toLong()}
