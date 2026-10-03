@@ -158,7 +158,7 @@ class MapActivity : AppCompatActivity() {
      * the two-manager, create/update shape stays the same either way.
      */
     private fun setupMap() {
-        mapView.mapboxMap.loadStyle(Style.DARK) {
+        mapView.mapboxMap.loadStyle(Style.STANDARD_SATELLITE) {
             styleLoaded = true
             vehicleIconBitmap = vectorToBitmap(R.drawable.ic_vehicle_marker)
             vehicleAnnotationManager = mapView.annotations.createPointAnnotationManager()

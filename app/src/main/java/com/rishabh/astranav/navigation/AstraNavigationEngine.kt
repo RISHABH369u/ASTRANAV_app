@@ -11,6 +11,7 @@ import com.rishabh.astranav.navigation.eskf.NavigationState
 import com.rishabh.astranav.navigation.eskf.Quaternion
 import com.rishabh.astranav.navigation.eskf.Vec3
 import com.rishabh.astranav.navigation.zupt.ZuptDetector
+import com.rishabh.astranav.replay.ReplayFrameMode
 
 import kotlin.math.atan2
 import kotlin.math.sqrt
@@ -54,11 +55,17 @@ import kotlin.math.sqrt
  *
  * This class does NOT replace DVFCController.
  * DVFC remains responsible for calibration/UI/diagnostics.
+ *
+ *
  */
+@Volatile
+private var replayFrameMode: ReplayFrameMode? = null
+
 class AstraNavigationEngine(
     private val context: Context,
     private val eskf: Eskf = Eskf(),
     private val zuptDetector: ZuptDetector = ZuptDetector()
+
 ) {
 
     companion object {
@@ -80,6 +87,24 @@ class AstraNavigationEngine(
         private const val MAX_NHC_SPEED_MPS =
             60.0
     }
+    fun setReplayFrameMode(mode: ReplayFrameMode?) {
+        replayFrameMode = mode
+
+        if (mode == ReplayFrameMode.DATASET_FRAME) {
+            dvfcTransform = null
+        } else if (mode == ReplayFrameMode.DVFC) {
+            dvfcTransform =
+                DvfcCalibrationStore.load(
+                    context.applicationContext
+                )
+        }
+
+        Log.i(
+            TAG,
+            "Replay frame mode = $mode, DVFC=${dvfcTransform != null}"
+        )
+    }
+
 
 
     // ---------------------------------------------------------
@@ -263,6 +288,105 @@ class AstraNavigationEngine(
         )
     }
 
+
+    // ---------------------------------------------------------
+// REPLAY SUPPORT
+// ---------------------------------------------------------
+
+    /**
+     * Resets the navigation runtime for offline IO-VNBD replay.
+     *
+     * Unlike reset(), this immediately enables the runtime without
+     * starting the Android SensorAdapter. Replay samples are then
+     * injected through processReplaySample().
+     */
+    @Synchronized
+    fun resetForReplay() {
+
+        sensorAdapter.stop()
+
+        running = true
+
+        eskf.reset()
+
+        lastTimestampNs = 0L
+
+        processedSampleCount = 0L
+
+        stationarySampleCount = 0
+
+        movingSampleCount = 0
+
+        latestSensorSample = null
+
+        latestSolution = NavigationSolution()
+
+        dvfcTransform =
+            DvfcCalibrationStore.load(
+                context.applicationContext
+            )
+
+        Log.i(
+            TAG,
+            "ASTRANAV replay runtime reset. " +
+                    "DVFC=${dvfcTransform != null}"
+        )
+
+        @Synchronized
+
+        fun resetForReplay(
+            frameMode: ReplayFrameMode = ReplayFrameMode.DATASET_FRAME
+        ) {
+            sensorAdapter.stop()
+
+            running = true
+
+            eskf.reset()
+
+            lastTimestampNs = 0L
+            processedSampleCount = 0L
+            stationarySampleCount = 0
+            movingSampleCount = 0
+
+            latestSensorSample = null
+            latestSolution = NavigationSolution()
+
+            replayFrameMode = frameMode
+
+            dvfcTransform =
+                when (frameMode) {
+                    ReplayFrameMode.DATASET_FRAME ->
+                        null
+
+                    ReplayFrameMode.DVFC ->
+                        DvfcCalibrationStore.load(
+                            context.applicationContext
+                        )
+                }
+
+            Log.i(
+                TAG,
+                "ASTRANAV replay runtime reset. " +
+                        "frameMode=$frameMode " +
+                        "DVFC=${dvfcTransform != null}"
+            )
+        }
+    }
+
+
+    /**
+     * Injects one offline replay sample through the exact same
+     * navigation pipeline used by the live runtime.
+     */
+    fun processReplaySample(
+        sample: DeviceSensorSample
+    ) {
+        if (!running) {
+            resetForReplay()
+        }
+
+        onSensorSample(sample)
+    }
 
     // ---------------------------------------------------------
     // REFRESH DVFC
