@@ -117,7 +117,8 @@ class HomeActivity : AppCompatActivity() {
             startActivity(Intent(this, DVFCActivity::class.java))
         }
         findViewById<View>(R.id.navTrips).setOnClickListener {
-            Toast.makeText(this, "Trips screen isn't built yet", Toast.LENGTH_SHORT).show()
+//            Toast.makeText(this, "Trips screen isn't built yet", Toast.LENGTH_SHORT).show()
+            startActivity(Intent(this, TripReplayActivity::class.java))
         }
         findViewById<View>(R.id.navSettings).setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
@@ -145,8 +146,9 @@ class HomeActivity : AppCompatActivity() {
             Toast.makeText(this, "Active navigation screen isn't built yet", Toast.LENGTH_SHORT).show()
         }
         findViewById<View>(R.id.lastTripCard).setOnClickListener {
-            // TODO: no Trip Analytics screen/storage exists yet — this card is still mock data, honestly.
+           // TODO: no Trip Analytics screen/storage exists yet — this card is still mock data, honestly.
             Toast.makeText(this, "Trip analytics isn't wired up yet", Toast.LENGTH_SHORT).show()
+
         }
 
         lifecycleScope.launch {
