@@ -85,6 +85,10 @@ class Eskf(
             velocityNisGate = 16.27
         )
 
+
+    private val learnedSpeedUpdate =
+        EskfLearnedSpeedUpdate()
+
     /*
      * ------------------------------------------------------------------
      * Diagnostics counters
@@ -109,6 +113,9 @@ class Eskf(
     private var acceptedGnssVelocityCount = 0L
     private var rejectedGnssVelocityCount = 0L
 
+    private var acceptedLearnedSpeedCount = 0L
+    private var rejectedLearnedSpeedCount = 0L
+
     private var lastPredictionResult:
             EskfPrediction.PredictionResult? = null
 
@@ -126,6 +133,9 @@ class Eskf(
 
     private var lastGnssVelocityResult:
             EskfGnssUpdate.VelocityUpdateResult? = null
+
+    private var lastLearnedSpeedResult:
+            EskfLearnedSpeedUpdate.UpdateResult? = null
 
     /*
      * ------------------------------------------------------------------
@@ -307,6 +317,8 @@ class Eskf(
         return result
     }
 
+
+
     /*
  * ------------------------------------------------------------------
  * GNSS correction
@@ -424,6 +436,52 @@ class Eskf(
             rejectedGnssVelocityCount = rejectedGnssVelocityCount,
             reason = result.reason ?: "unknown"
         )
+    }
+
+
+    /*
+ * ------------------------------------------------------------------
+ * ASTRA-Speed learned speed correction
+ * ------------------------------------------------------------------
+ *
+ * ASTRA-Speed provides a learned scalar vehicle speed measurement.
+ *
+ * IMPORTANT:
+ *
+ * The learned speed does NOT overwrite ESKF velocity.
+ *
+ * It is fused as an ordinary ESKF measurement:
+ *
+ *     z = learned speed
+ *     h(x) = |v|
+ *
+ * This allows the ESKF to use covariance, innovation and NIS
+ * gating instead of blindly trusting the neural network.
+ */
+    @Synchronized
+    fun applyLearnedSpeed(
+        learnedSpeedMps: Double,
+        speedStdMps: Double? = null
+    ): EskfLearnedSpeedUpdate.UpdateResult {
+
+        val result =
+            learnedSpeedUpdate.update(
+                state = navigationState,
+                covariance = covariance,
+                learnedSpeedMps = learnedSpeedMps,
+                speedStdMps = speedStdMps
+            )
+
+        lastLearnedSpeedResult =
+            result
+
+        if (result.accepted) {
+            acceptedLearnedSpeedCount++
+        } else {
+            rejectedLearnedSpeedCount++
+        }
+
+        return result
     }
 
     /*
@@ -702,6 +760,29 @@ class Eskf(
     }
 
     /*
+ * ------------------------------------------------------------------
+ * ASTRA-Speed diagnostics
+ * ------------------------------------------------------------------
+ */
+
+    @Synchronized
+    fun getAcceptedLearnedSpeedCount(): Long {
+        return acceptedLearnedSpeedCount
+    }
+
+    @Synchronized
+    fun getRejectedLearnedSpeedCount(): Long {
+        return rejectedLearnedSpeedCount
+    }
+
+    @Synchronized
+    fun getLastLearnedSpeedResult():
+            EskfLearnedSpeedUpdate.UpdateResult? {
+
+        return lastLearnedSpeedResult
+    }
+
+    /*
      * ------------------------------------------------------------------
      * Numerical validity
      * ------------------------------------------------------------------
@@ -797,6 +878,13 @@ class Eskf(
             rejectedGnssVelocityCount =
                 rejectedGnssVelocityCount,
 
+            acceptedLearnedSpeedCount =
+                acceptedLearnedSpeedCount,
+
+            rejectedLearnedSpeedCount =
+                rejectedLearnedSpeedCount,
+
+
             stateFinite =
                 isStateFinite(),
 
@@ -850,6 +938,9 @@ class Eskf(
         acceptedGnssVelocityCount = 0L
         rejectedGnssVelocityCount = 0L
 
+        acceptedLearnedSpeedCount = 0L
+        rejectedLearnedSpeedCount = 0L
+
 
         lastPredictionResult = null
         lastZuptResult = null
@@ -857,6 +948,7 @@ class Eskf(
         lastZaruResult = null
         lastGnssPositionResult = null
         lastGnssVelocityResult = null
+        lastLearnedSpeedResult = null
     }
 
 
@@ -1052,6 +1144,10 @@ data class EskfDiagnostics(
     val acceptedGnssVelocityCount: Long,
 
     val rejectedGnssVelocityCount: Long,
+
+    val acceptedLearnedSpeedCount: Long,
+
+    val rejectedLearnedSpeedCount: Long,
 
     val stateFinite: Boolean,
 

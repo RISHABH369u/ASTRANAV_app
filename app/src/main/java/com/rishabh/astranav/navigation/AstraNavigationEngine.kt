@@ -12,6 +12,8 @@ import com.rishabh.astranav.navigation.eskf.Vec3
 import com.rishabh.astranav.navigation.zupt.ZuptDetector
 import com.rishabh.astranav.replay.ReplayFrameMode
 import kotlin.math.asin
+import com.rishabh.astranav.ml.AstraMlFusionBridge
+import com.rishabh.astranav.sensor.ImuSample
 
 
 import kotlin.math.atan2
@@ -60,6 +62,32 @@ import kotlin.math.sin
  * ASTRA-Core ESKF
  *
  *
+ * (
+ * NEW 4/10/26 5:36AMK
+ *                          ┌── ASTRA-Speed ─────┐
+ *                          │                    │
+ * IMU → SensorAdapter → DVFC → ESKF Prediction │
+ *                          │                    ↓
+ *                          │              ASTRA-GUARD
+ *                          │                    │
+ *                          │                    ↓
+ *                          │             ESKF Speed Update
+ *                          │
+ *                          ├── ASTRA-SPHM ──→ consistency
+ *                          │
+ *                          └── ASTRA-Motion
+ *                                       │
+ *                                       ↓
+ *                                ZUPT Detector
+ *                                       │
+ *                               ┌───────┴───────┐
+ *                               ↓               ↓
+ *                             ZUPT             ZARU
+ *                               │
+ *                               ↓
+ *                              NHC
+ *)
+ *
  * IMPORTANT:
  *
  * - ESKF is the authoritative navigation state.
@@ -78,6 +106,7 @@ class AstraNavigationEngine(
     private val context: Context,
     private val eskf: Eskf = Eskf(),
     private val zuptDetector: ZuptDetector = ZuptDetector()
+
 
 ) {
 
@@ -495,7 +524,20 @@ class AstraNavigationEngine(
 
     private var movingSampleCount =
         0
+// ---------------------------------------------------------
+// ASTRA ML FUSION
+// ---------------------------------------------------------
 
+    private val mlFusionBridge =
+        AstraMlFusionBridge(
+            context = context.applicationContext,
+            eskf = eskf
+        )
+
+    @Volatile
+    private var latestMlFusion:
+            AstraMlFusionBridge.FusionResult =
+        AstraMlFusionBridge.FusionResult()
 
     // ---------------------------------------------------------
     // DVFC TRANSFORM
@@ -590,6 +632,8 @@ class AstraNavigationEngine(
 
         eskf.reset()
 
+        mlFusionBridge.reset()
+
         /*
          * Return to normal live-navigation mode.
          */
@@ -665,6 +709,8 @@ class AstraNavigationEngine(
             true
 
         eskf.reset()
+
+        mlFusionBridge.reset()
 
         lastTimestampNs =
             0L
@@ -1309,9 +1355,99 @@ class AstraNavigationEngine(
 
 
         // -----------------------------------------------------
-        // CURRENT TRUSTED SPEED
-        // -----------------------------------------------------
+// ASTRA ML FUSION
+// -----------------------------------------------------
 
+        /*
+         * Convert the synchronized DeviceSensorSample into the
+         * common ImuSample contract used by the ML engines.
+         *
+         * IMPORTANT:
+         *
+         * ASTRA-Speed and ASTRA-SPHM intentionally receive the
+         * original sensor-frame quantities because their trained
+         * feature contracts were built from those quantities.
+         *
+         * ASTRA-Motion receives vehicle-frame quantities below.
+         */
+        val mlImuSample =
+            ImuSample(
+
+                timestampNanos =
+                    sample.timestampNs,
+
+                accelX =
+                    sample.acceleration[0].toDouble(),
+
+                accelY =
+                    sample.acceleration[1].toDouble(),
+
+                accelZ =
+                    sample.acceleration[2].toDouble(),
+
+                gyroX =
+                    sample.angularVelocity[0].toDouble(),
+
+                gyroY =
+                    sample.angularVelocity[1].toDouble(),
+
+                gyroZ =
+                    sample.angularVelocity[2].toDouble(),
+
+                gravityX =
+                    sample.gravity[0].toDouble(),
+
+                gravityY =
+                    sample.gravity[1].toDouble(),
+
+                gravityZ =
+                    sample.gravity[2].toDouble()
+            )
+
+
+        /*
+         * Feed all three ML models through one controlled bridge.
+         *
+         * ASTRA-Motion receives the DVFC/device→vehicle frame.
+         *
+         * ASTRA-Speed and ASTRA-SPHM preserve their trained
+         * smartphone feature contract.
+         */
+        val mlFusion =
+            mlFusionBridge.process(
+
+                sample =
+                    mlImuSample,
+
+                vehicleSpecificForce =
+                    doubleArrayOf(
+                        vehicleSpecificForce[0].toDouble(),
+                        vehicleSpecificForce[1].toDouble(),
+                        vehicleSpecificForce[2].toDouble()
+                    ),
+
+                vehicleGyro =
+                    doubleArrayOf(
+                        vehicleGyro[0].toDouble(),
+                        vehicleGyro[1].toDouble(),
+                        vehicleGyro[2].toDouble()
+                    )
+            )
+
+        latestMlFusion =
+            mlFusion
+
+
+// -----------------------------------------------------
+// CURRENT TRUSTED SPEED
+// -----------------------------------------------------
+
+        /*
+         * IMPORTANT:
+         *
+         * Read speed AFTER ASTRA-Speed has had a chance to
+         * correct ESKF velocity magnitude.
+         */
         val currentVelocity =
             eskf.getVelocity()
 
@@ -1363,13 +1499,20 @@ class AstraNavigationEngine(
                     trustedSpeedMps,
 
                 /*
-                 * ASTRA-Motion is not connected yet.
-                 *
-                 * Therefore there is currently no ML ZUPT
-                 * probability to provide.
-                 */
+ * ASTRA-Motion supplies the learned stationary/motion
+ * probability to the existing ZUPT detector.
+ *
+ * The detector still combines:
+ *
+ *      gyro
+ *      acceleration
+ *      trusted ESKF speed
+ *      ASTRA-Motion ZUPT evidence
+ *
+ * ASTRA-Motion therefore does NOT directly trigger ZUPT.
+ */
                 zuptLogit =
-                    null
+                    mlFusion.motionZuptScore
             )
 
 
@@ -1561,7 +1704,31 @@ class AstraNavigationEngine(
                         "NAV_A_NORM=${"%.3f".format(navAcc.norm())} " +
                         "VEL=${"%.3f".format(state.velocity.norm())}m/s " +
                         "zupt=${zuptResult.active} " +
-                        "nhc=$nhcAccepted"
+                        "nhc=$nhcAccepted " +
+                        "mlSpeed=${
+                            mlFusion.speedOutput
+                                ?.speedMps
+                                ?.let { "%.3f".format(it) }
+                                ?: "--"
+                        } " +
+                        "mlSPHM=${
+                            mlFusion.sphmOutput
+                                ?.speedMps
+                                ?.let { "%.3f".format(it) }
+                                ?: "--"
+                        } " +
+                        "mlZupt=${
+                            mlFusion.motionZuptScore
+                                ?.let { "%.3f".format(it) }
+                                ?: "--"
+                        } " +
+                        "mlSpeedAccepted=${
+                            mlFusion.speedUpdate?.accepted ?: false
+                        } " +
+                        "mlStd=${
+                            "%.2f".format(mlFusion.speedStdMps)
+                        } " +
+                        "guard=${mlFusion.guardReason}"
             )
         }
 
@@ -1767,6 +1934,19 @@ class AstraNavigationEngine(
 
         return movingSampleCount
     }
+    fun latestMlFusion():
+            AstraMlFusionBridge.FusionResult {
+
+        return latestMlFusion
+    }
+
+    fun mlFusion():
+            AstraMlFusionBridge {
+
+        return mlFusionBridge
+    }
+
+
 }
 
 
