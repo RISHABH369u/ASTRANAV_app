@@ -13,7 +13,7 @@ import kotlin.math.exp
 /**
  * Runtime engine for ASTRA-SPHM.
  *
- * ASTRA-SPHM is the renamed V8 state-conditioned dead-reckoning model.
+// * ASTRA-SPHM is the renamed V8 state-conditioned dead-reckoning model.
  *
  * Responsibilities:
  *  - maintain the 20 x 6 IMU window

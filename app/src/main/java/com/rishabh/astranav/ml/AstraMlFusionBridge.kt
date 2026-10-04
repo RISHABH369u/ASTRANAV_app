@@ -200,6 +200,26 @@ class AstraMlFusionBridge(
     private var previousTrustedSpeedMps =
         0.0
 
+    /**
+     * Set by the navigation engine. False while the inertial
+     * solution is diverging (huge speed, repeated prediction
+     * rejections, or far above the learned speed).
+     *
+     * While false, the ESKF speed must NOT be fed to the neural
+     * models as their "initial speed": ASTRA-SPHM normalizes it
+     * as roughly (v - 3.5) / 9.6, so a diverged 80-95 m/s INS
+     * speed becomes a ~8-10 sigma out-of-distribution input,
+     * and the guard then rejects the (correct) learned speed for
+     * "disagreeing" with the (wrong) INS.
+     */
+    @Volatile
+    var insSpeedTrusted: Boolean =
+        true
+
+    /** Upper bound for any speed prior given to the models. */
+    private val maxPriorSpeedMps =
+        60.0
+
     private var previousYawRate =
         0.0
 
@@ -414,13 +434,19 @@ class AstraMlFusionBridge(
          * the previous bridge state.
          */
         val priorSpeed =
-            if (
-                eskfSpeedBefore.isFinite()
-            ) {
-                eskfSpeedBefore
-            } else {
-                previousTrustedSpeedMps
-            }
+            (
+                    if (
+                        eskfSpeedBefore.isFinite() &&
+                        insSpeedTrusted
+                    ) {
+                        eskfSpeedBefore
+                    } else {
+                        previousTrustedSpeedMps
+                    }
+                    ).coerceIn(
+                    0.0,
+                    maxPriorSpeedMps
+                )
 
 
         // ========================================================
@@ -659,11 +685,29 @@ class AstraMlFusionBridge(
 
         previousTrustedSpeedMps =
             if (
-                fusedSpeed.isFinite()
+                fusedSpeed.isFinite() &&
+                insSpeedTrusted
             ) {
-                fusedSpeed
+                fusedSpeed.coerceIn(
+                    0.0,
+                    maxPriorSpeedMps
+                )
             } else {
-                priorSpeed
+                /*
+                 * INS is not trustworthy: carry the learned
+                 * speed forward (or the previous prior) instead
+                 * of the diverged ESKF speed.
+                 */
+                (
+                        speedOutput
+                            ?.takeIf { it.valid }
+                            ?.speedMps
+                            ?.toDouble()
+                            ?: priorSpeed
+                        ).coerceIn(
+                        0.0,
+                        maxPriorSpeedMps
+                    )
             }
 
 

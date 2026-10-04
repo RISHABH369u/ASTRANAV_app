@@ -233,4 +233,6 @@ dependencies {
 
 
     implementation("io.github.sceneview:sceneview:2.2.1")
+
+    testImplementation("junit:junit:4.13.2")
 }

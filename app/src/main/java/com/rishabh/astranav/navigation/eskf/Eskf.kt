@@ -952,23 +952,195 @@ class Eskf(
     }
 
 
+    /*
+     * NOTE: this previously modified getState(), which returns a
+     * COPY, so it silently did nothing. It now writes the real
+     * navigation state.
+     */
+    @Synchronized
     fun initializeReplayAttitude(
         attitude: Quaternion,
         timestampNanos: Long
     ) {
-        val state = getState()
-
-        state.attitude =
+        navigationState.attitude =
             attitude.normalized()
 
-        state.velocity =
+        navigationState.velocity =
             Vec3.ZERO
 
-        state.position =
+        navigationState.position =
             Vec3.ZERO
 
-        state.timestampNanos =
+        navigationState.timestampNanos =
             timestampNanos
+    }
+
+    /*
+     * ------------------------------------------------------------------
+     * Divergence recovery
+     * ------------------------------------------------------------------
+     */
+
+    /**
+     * Replaces the nominal velocity with an externally trusted
+     * value (e.g. the learned-speed estimate) and widens the
+     * velocity covariance so subsequent measurements can refine it.
+     *
+     * Use this when the inertial prediction has diverged
+     * (repeated "velocity exceeded safety limit" rejections),
+     * instead of freezing the filter forever.
+     */
+    @Synchronized
+    fun reseedVelocity(
+        velocity: Vec3,
+        velocityStdMps: Double
+    ) {
+        require(velocity.isFinite()) {
+            "Reseed velocity is non-finite"
+        }
+
+        require(
+            velocityStdMps.isFinite() &&
+                    velocityStdMps > 0.0
+        ) {
+            "velocityStdMps must be finite and > 0"
+        }
+
+        navigationState.velocity =
+            velocity.copy()
+
+        val variance =
+            velocityStdMps * velocityStdMps
+
+        // Velocity states occupy indices 3..5.
+        for (i in 3..5) {
+            for (j in 0 until STATE_SIZE) {
+                if (j != i) {
+                    covariance[i, j] = 0.0
+                    covariance[j, i] = 0.0
+                }
+            }
+            covariance.setDiagonal(i, variance)
+        }
+    }
+
+    /**
+     * Gravity-based roll/pitch correction.
+     *
+     * Attitude is otherwise pure gyro integration; any gyro bias
+     * or axis error accumulates into a tilt that leaks gravity
+     * into the horizontal plane. When the specific-force magnitude
+     * is close to g (little linear acceleration), pull the
+     * predicted "up" direction toward the measured one.
+     *
+     * Body = FRD, Navigation = NED. At rest f_b = R^T * [0, 0, -g].
+     *
+     * Small-angle correction applied as a body-frame increment:
+     *
+     *     q <- q (x) dq(k * (u_meas x u_pred))
+     *
+     * Returns true if a correction was applied.
+     */
+    @Synchronized
+    fun applyGravityTilt(
+        specificForceBody: Vec3,
+        gain: Double,
+        expectedLinearAccelBody: Vec3 = Vec3.ZERO,
+        maxMagnitudeDeviationMps2: Double = 0.15,
+        dtSeconds: Double = 0.0,
+        biasGain: Double = 0.0
+    ): Boolean {
+
+        if (
+            !specificForceBody.isFinite() ||
+            !expectedLinearAccelBody.isFinite() ||
+            !gain.isFinite() ||
+            gain <= 0.0
+        ) {
+            return false
+        }
+
+        /*
+         * f_b = a_b - g_b, so the gravity-only part is
+         * f_b - a_b. In a steady turn the dominant kinematic
+         * term is the centripetal acceleration [0, v*wz, 0]
+         * (FRD, +wz = turning right); callers pass it in so the
+         * correction does not cancel real cornering.
+         */
+        val gravityPart =
+            specificForceBody - expectedLinearAccelBody
+
+        val magnitude =
+            gravityPart.norm()
+
+        if (
+            !magnitude.isFinite() ||
+            magnitude < 1e-6 ||
+            kotlin.math.abs(
+                magnitude - config.gravityMps2
+            ) > maxMagnitudeDeviationMps2
+        ) {
+            return false
+        }
+
+        val measuredUp =
+            gravityPart / magnitude
+
+        val predictedUp =
+            navigationState.attitude
+                .conjugate()
+                .rotate(
+                    Vec3(0.0, 0.0, -1.0)
+                )
+
+        val angleError =
+            measuredUp.cross(predictedUp)
+
+        val correction =
+            angleError * gain
+
+        /*
+         * Integral path (complementary filter): a persistent
+         * tilt error means the gyro bias estimate is wrong.
+         * Gyro bias is subtracted in predict(), so a positive
+         * residual drift (negative angleError) must INCREASE
+         * the bias estimate:
+         *
+         *     b <- b - ki * dt * e
+         *
+         * Without this, tilt aiding only bounds the error at
+         * (bias / loop gain), e.g. ~5 deg for a 0.003 rad/s bias.
+         */
+        if (
+            biasGain > 0.0 &&
+            dtSeconds > 0.0 &&
+            dtSeconds.isFinite()
+        ) {
+
+            val updated =
+                navigationState.gyroBias -
+                        angleError * (biasGain * dtSeconds)
+
+            // Never let this path wander beyond ~3 deg/s.
+            val limit = 0.05
+
+            navigationState.gyroBias =
+                Vec3(
+                    updated.x.coerceIn(-limit, limit),
+                    updated.y.coerceIn(-limit, limit),
+                    updated.z.coerceIn(-limit, limit)
+                )
+        }
+
+        navigationState.attitude =
+            (
+                    navigationState.attitude *
+                            Quaternion.fromRotationVector(
+                                correction
+                            )
+                    ).normalized()
+
+        return true
     }
 
     /*

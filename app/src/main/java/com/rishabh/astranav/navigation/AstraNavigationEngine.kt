@@ -137,6 +137,45 @@ class AstraNavigationEngine(
 
         private const val REPLAY_GRAVITY_MAX =
             11.0
+
+        // -------------------------------------------------
+        // INS divergence recovery / aiding
+        // -------------------------------------------------
+
+        /** Consecutive prediction rejections before re-seeding. */
+        private const val REJECTION_RESEED_STREAK =
+            3
+
+        /** INS speed this far above the learned speed is suspect. */
+        private const val INS_ML_DIVERGENCE_MPS =
+            25.0
+
+        /** Samples of sustained divergence before re-seeding. */
+        private const val INS_ML_DIVERGENCE_SAMPLES =
+            15
+
+        /** Sane upper bound for any INS speed (m/s). */
+        private const val INS_SANE_SPEED_MPS =
+            70.0
+
+        /** Std dev given to a re-seeded velocity (m/s). */
+        private const val RESEED_VELOCITY_STD_MPS =
+            3.0
+
+        /** Per-sample gravity tilt-correction gain. */
+        private const val GRAVITY_TILT_GAIN =
+            0.003
+
+        /**
+         * Gyro-bias learning gain (1/s^2). Critically damped for
+         * the 0.03 1/s proportional loop: ki = kp^2 / 4.
+         */
+        private const val GRAVITY_TILT_BIAS_GAIN =
+            2.25e-4
+
+        /** Only tilt-correct when turning slower than this. */
+        private const val GRAVITY_TILT_MAX_GYRO_RADPS =
+            0.20
     }
 
 
@@ -524,6 +563,27 @@ class AstraNavigationEngine(
 
     private var movingSampleCount =
         0
+
+    // ---------------------------------------------------------
+    // INS HEALTH / RECOVERY STATE
+    // ---------------------------------------------------------
+
+    /** Consecutive rejected ESKF predictions. */
+    private var consecutiveRejections =
+        0
+
+    /** Consecutive samples where INS speed >> learned speed. */
+    private var insDivergenceSamples =
+        0
+
+    /** Last valid learned speed (m/s), or null if none yet. */
+    private var lastMlSpeedMps: Double? =
+        null
+
+    /** Number of times velocity was re-seeded (diagnostics). */
+    private var velocityReseedCount =
+        0
+
 // ---------------------------------------------------------
 // ASTRA ML FUSION
 // ---------------------------------------------------------
@@ -660,6 +720,21 @@ class AstraNavigationEngine(
         movingSampleCount =
             0
 
+        consecutiveRejections =
+            0
+
+        insDivergenceSamples =
+            0
+
+        lastMlSpeedMps =
+            null
+
+        velocityReseedCount =
+            0
+
+        mlFusionBridge.insSpeedTrusted =
+            true
+
         latestSensorSample =
             null
 
@@ -727,6 +802,21 @@ class AstraNavigationEngine(
         movingSampleCount =
             0
 
+        consecutiveRejections =
+            0
+
+        insDivergenceSamples =
+            0
+
+        lastMlSpeedMps =
+            null
+
+        velocityReseedCount =
+            0
+
+        mlFusionBridge.insSpeedTrusted =
+            true
+
         latestSensorSample =
             null
 
@@ -787,11 +877,20 @@ class AstraNavigationEngine(
             return
         }
 
+        /*
+         * The ESKF body frame is FRD (see DatasetFrameConversion).
+         * Express the recorded gravity/specific-force direction in
+         * that frame, so a level phone gives f = [0, 0, -g] and
+         * therefore an IDENTITY initial attitude.
+         */
+        val gravityFrd =
+            DatasetFrameConversion.specificForceToFrd(gravity)
+
         val gravityBody =
             Vec3(
-                x = gravity[0].toDouble(),
-                y = gravity[1].toDouble(),
-                z = gravity[2].toDouble()
+                x = gravityFrd[0].toDouble(),
+                y = gravityFrd[1].toDouble(),
+                z = gravityFrd[2].toDouble()
             )
 
         val gravityMagnitude =
@@ -1213,6 +1312,37 @@ class AstraNavigationEngine(
         // ESKF PREDICTION
         // -----------------------------------------------------
 
+        /*
+         * ESKF body frame is FRD (X fwd, Y right, Z down).
+         *
+         * Live mode: DVFC already produced the vehicle frame.
+         * IO-VNBD replay: convert the recorded Android-style
+         * channels (Z up, gyro columns [yaw, pitch, roll]) with
+         * DatasetFrameConversion. The ML models keep the original
+         * arrays below; only the mechanization uses these.
+         */
+        val eskfSpecificForce =
+            if (
+                replayFrameMode ==
+                ReplayFrameMode.DATASET_FRAME
+            ) {
+                DatasetFrameConversion
+                    .specificForceToFrd(vehicleSpecificForce)
+            } else {
+                vehicleSpecificForce
+            }
+
+        val eskfGyro =
+            if (
+                replayFrameMode ==
+                ReplayFrameMode.DATASET_FRAME
+            ) {
+                DatasetFrameConversion
+                    .gyroToFrd(vehicleGyro)
+            } else {
+                vehicleGyro
+            }
+
         val prediction =
             eskf.predict(
 
@@ -1222,30 +1352,30 @@ class AstraNavigationEngine(
                 accelerationBody =
                     Vec3(
                         x =
-                            vehicleSpecificForce[0]
+                            eskfSpecificForce[0]
                                 .toDouble(),
 
                         y =
-                            vehicleSpecificForce[1]
+                            eskfSpecificForce[1]
                                 .toDouble(),
 
                         z =
-                            vehicleSpecificForce[2]
+                            eskfSpecificForce[2]
                                 .toDouble()
                     ),
 
                 gyroBody =
                     Vec3(
                         x =
-                            vehicleGyro[0]
+                            eskfGyro[0]
                                 .toDouble(),
 
                         y =
-                            vehicleGyro[1]
+                            eskfGyro[1]
                                 .toDouble(),
 
                         z =
-                            vehicleGyro[2]
+                            eskfGyro[2]
                                 .toDouble()
                     )
             )
@@ -1269,19 +1399,15 @@ class AstraNavigationEngine(
             processedSampleCount == 1L
         ) {
 
-            val initialAttitude =
-                replayInitialAttitudeFromGravity(
-                    sample.gravity
-                )
-
-            eskf.initializeReplayAttitude(
-                attitude =
-                    initialAttitude,
-
-                timestampNanos =
-                    sample.timestampNs
-            )
-
+            /*
+             * NOTE: the initial attitude is already set by
+             * initializeReplayAttitudeFromGravity() in
+             * processReplaySample(). The previous code re-ran
+             * an init here through Eskf.initializeReplayAttitude(),
+             * which only modified a COPY of the state (getState()
+             * returns a copy), so it was a no-op and has been
+             * removed to avoid a second, conflicting convention.
+             */
             Log.i(
                 TAG,
                 "REPLAY_ATTITUDE_INIT " +
@@ -1311,6 +1437,42 @@ class AstraNavigationEngine(
                         prediction.reason +
                         " timestamp=${sample.timestampNs}ns"
             )
+
+            /*
+             * RECOVERY:
+             *
+             * A "safety limit" rejection does not commit the state,
+             * so if the inertial error persists, EVERY following
+             * sample is rejected too and the filter is dead (no
+             * ZUPT / NHC / learned-speed / GNSS update ever runs).
+             *
+             * After a short streak, re-seed velocity from the
+             * learned speed so the filter can come back.
+             */
+            if (
+                prediction.reason
+                    ?.contains("safety limit") == true
+            ) {
+
+                consecutiveRejections++
+
+                mlFusionBridge.insSpeedTrusted =
+                    false
+
+                if (
+                    consecutiveRejections >=
+                    REJECTION_RESEED_STREAK
+                ) {
+
+                    reseedVelocityFromLearnedSpeed(
+                        "prediction rejected " +
+                                "$consecutiveRejections times"
+                    )
+
+                    consecutiveRejections =
+                        0
+                }
+            }
 
             /*
              * IMPORTANT:
@@ -1352,6 +1514,113 @@ class AstraNavigationEngine(
 
         hasLastTimestamp =
             true
+
+        consecutiveRejections =
+            0
+
+
+        // -----------------------------------------------------
+        // GRAVITY TILT AIDING
+        // -----------------------------------------------------
+
+        /*
+         * Attitude is pure gyro integration otherwise. When the
+         * vehicle is not turning hard and |f| ~ g, nudge
+         * roll/pitch toward the gravity direction so small gyro
+         * errors cannot accumulate into a large tilt.
+         */
+        val gyroMagnitude =
+            sqrt(
+                eskfGyro[0].toDouble() * eskfGyro[0] +
+                        eskfGyro[1].toDouble() * eskfGyro[1] +
+                        eskfGyro[2].toDouble() * eskfGyro[2]
+            )
+
+        val insSpeedForTilt =
+            eskf.getVelocity().norm()
+
+        if (
+            gyroMagnitude < GRAVITY_TILT_MAX_GYRO_RADPS &&
+            mlFusionBridge.insSpeedTrusted &&
+            insSpeedForTilt.isFinite() &&
+            insSpeedForTilt < INS_SANE_SPEED_MPS
+        ) {
+
+            eskf.applyGravityTilt(
+                specificForceBody =
+                    Vec3(
+                        eskfSpecificForce[0].toDouble(),
+                        eskfSpecificForce[1].toDouble(),
+                        eskfSpecificForce[2].toDouble()
+                    ),
+
+                gain =
+                    GRAVITY_TILT_GAIN,
+
+                dtSeconds =
+                    prediction.deltaTimeSeconds,
+
+                biasGain =
+                    GRAVITY_TILT_BIAS_GAIN,
+
+                /*
+                 * Centripetal acceleration in FRD:
+                 * turning right (+wz) accelerates toward +Y.
+                 */
+                expectedLinearAccelBody =
+                    Vec3(
+                        0.0,
+                        insSpeedForTilt *
+                                eskfGyro[2].toDouble(),
+                        0.0
+                    )
+            )
+        }
+
+
+        // -----------------------------------------------------
+        // INS HEALTH (feeds the ML speed prior)
+        // -----------------------------------------------------
+
+        val insSpeedNow =
+            eskf.getVelocity().norm()
+
+        val mlSpeedRef =
+            lastMlSpeedMps
+
+        val insDiverging =
+            !insSpeedNow.isFinite() ||
+                    insSpeedNow > INS_SANE_SPEED_MPS ||
+                    (
+                            mlSpeedRef != null &&
+                                    insSpeedNow - mlSpeedRef >
+                                    INS_ML_DIVERGENCE_MPS
+                            )
+
+        insDivergenceSamples =
+            if (insDiverging) {
+                insDivergenceSamples + 1
+            } else {
+                0
+            }
+
+        mlFusionBridge.insSpeedTrusted =
+            insDivergenceSamples == 0
+
+        if (
+            insDivergenceSamples >=
+            INS_ML_DIVERGENCE_SAMPLES
+        ) {
+
+            reseedVelocityFromLearnedSpeed(
+                "INS speed ${"%.1f".format(insSpeedNow)} m/s " +
+                        "vs learned " +
+                        "${mlSpeedRef?.let { "%.1f".format(it) } ?: "--"} m/s"
+            )
+
+            insDivergenceSamples =
+                0
+        }
 
 
         // -----------------------------------------------------
@@ -1436,6 +1705,30 @@ class AstraNavigationEngine(
 
         latestMlFusion =
             mlFusion
+
+        /*
+         * Remember the learned speed (mean of the valid models)
+         * as the fallback reference for divergence detection and
+         * velocity re-seeding.
+         */
+        run {
+            val learned =
+                listOfNotNull(
+                    mlFusion.speedOutput
+                        ?.takeIf { it.valid }
+                        ?.speedMps,
+
+                    mlFusion.sphmOutput
+                        ?.takeIf { it.valid }
+                        ?.speedMps
+                ).map { it.toDouble() }
+                    .filter { it.isFinite() && it >= 0.0 }
+
+            if (learned.isNotEmpty()) {
+                lastMlSpeedMps =
+                    learned.average()
+            }
+        }
 
 
 // -----------------------------------------------------
@@ -1570,16 +1863,21 @@ class AstraNavigationEngine(
             val zaru =
                 eskf.applyZaru(
 
+                    /*
+                     * ZARU observes yaw rate about the ESKF body Z
+                     * axis, so it must use the ESKF-frame (FRD)
+                     * gyro, not the raw dataset-ordered columns.
+                     */
                     gyroBody =
                         Vec3(
                             x =
-                                gyroX,
+                                eskfGyro[0].toDouble(),
 
                             y =
-                                gyroY,
+                                eskfGyro[1].toDouble(),
 
                             z =
-                                gyroZ
+                                eskfGyro[2].toDouble()
                         )
                 )
 
@@ -1733,6 +2031,67 @@ class AstraNavigationEngine(
         }
 
 
+    }
+
+
+    // ---------------------------------------------------------
+    // INS DIVERGENCE RECOVERY
+    // ---------------------------------------------------------
+
+    /**
+     * Replaces the (diverged) ESKF velocity with the learned
+     * speed along the current body-forward direction projected
+     * on the horizontal plane, and widens the velocity
+     * covariance.
+     *
+     * If no learned speed is available yet the velocity is
+     * re-seeded to zero.
+     */
+    private fun reseedVelocityFromLearnedSpeed(
+        reason: String
+    ) {
+
+        val speed =
+            (lastMlSpeedMps ?: 0.0)
+                .coerceIn(0.0, INS_SANE_SPEED_MPS)
+
+        val forwardNav =
+            eskf
+                .getAttitude()
+                .rotate(
+                    Vec3(1.0, 0.0, 0.0)
+                )
+
+        val horizontal =
+            Vec3(
+                forwardNav.x,
+                forwardNav.y,
+                0.0
+            )
+
+        val direction =
+            if (horizontal.norm() > 0.3) {
+                horizontal / horizontal.norm()
+            } else {
+                // Body X points almost vertically: heading unknown.
+                Vec3(1.0, 0.0, 0.0)
+            }
+
+        eskf.reseedVelocity(
+            velocity =
+                direction * speed,
+
+            velocityStdMps =
+                RESEED_VELOCITY_STD_MPS
+        )
+
+        velocityReseedCount++
+
+        Log.w(
+            TAG,
+            "INS_RESEED velocity -> ${"%.2f".format(speed)} m/s " +
+                    "($reason) count=$velocityReseedCount"
+        )
     }
 
 
